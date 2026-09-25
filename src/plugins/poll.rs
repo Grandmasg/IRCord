@@ -18,17 +18,17 @@ impl Plugin for PollPlugin {
         match sub.as_str() {
             "start" => {
                 if rest.is_empty() {
-                    return Ok(Some("Gebruik: !poll start \"Vraag?\" optie1/optie2".into()));
+                    return Ok(Some(ctx.locale.t("poll_usage").into()));
                 }
 
-                // Eenvoudige parser: vraag tussen quotes, opties gescheiden door slash
+                // Simple parser: question in quotes, options separated by slash
                 let (question, options_str) = if rest.starts_with('"') {
                     if let Some(end_quote) = rest[1..].find('"') {
                         let q = &rest[1..=end_quote];
                         let opt = rest[end_quote + 2..].trim();
                         (q, opt)
                     } else {
-                        return Ok(Some("Sluit de vraag af met dubbele aanhalingstekens: !poll start \"Vraag?\" optie1/optie2".into()));
+                        return Ok(Some(ctx.locale.t("poll_need_quotes").into()));
                     }
                 } else {
                     let mut s = rest.splitn(2, '?');
@@ -39,12 +39,12 @@ impl Plugin for PollPlugin {
 
                 let options: Vec<&str> = options_str.split('/').map(|s| s.trim()).filter(|s| !s.is_empty()).collect();
                 if options.len() < 2 {
-                    return Ok(Some("Een peiling moet minimaal 2 opties hebben, gescheiden door een slash (/): optie1/optie2".into()));
+                    return Ok(Some(ctx.locale.t("poll_min_options").into()));
                 }
 
                 let options_json = serde_json::to_string(&options)?;
 
-                // Deactiveer eerdere actieve peilingen in dit kanaal
+                // Deactivate previous active polls in this channel
                 sqlx::query!("UPDATE polls SET is_active = FALSE WHERE channel = ?", cmd.channel)
                     .execute(&ctx.db)
                     .await?;
@@ -69,16 +69,19 @@ impl Plugin for PollPlugin {
                     opt_list.push(format!("[{}] {}", idx + 1, opt));
                 }
 
+                let poll_title = if ctx.locale.is_dutch() { "Peiling" } else { "Poll" };
+                let vote_hint = if ctx.locale.is_dutch() { "Stem met: !poll vote <nummer>" } else { "Vote with: !poll vote <number>" };
+
                 Ok(Some(format!(
-                    "📊 [Peiling #{}: \"{}\"] {} | Stem met: !poll vote <nummer>",
-                    poll_id, question, opt_list.join(" | ")
+                    "📊 [{} #{}: \"{}\"] {} | {}",
+                    poll_title, poll_id, question, opt_list.join(" | "), vote_hint
                 )))
             }
             "vote" => {
                 let choice_str = rest.trim();
                 let choice_num: usize = match choice_str.parse() {
                     Ok(n) if n > 0 => n,
-                    _ => return Ok(Some("Geef een geldig optienummer op: !poll vote 1".into())),
+                    _ => return Ok(Some(ctx.locale.t("poll_vote_usage").into())),
                 };
 
                 let active_poll = sqlx::query!(
@@ -91,7 +94,7 @@ impl Plugin for PollPlugin {
                 if let Some(poll) = active_poll {
                     let options: Vec<String> = serde_json::from_str(&poll.options_json)?;
                     if choice_num > options.len() {
-                        return Ok(Some(format!("Ongeldige keuze. Kies tussen 1 en {}.", options.len())));
+                        return Ok(Some(ctx.locale.tf("poll_vote_invalid", &[("max", &options.len().to_string())])));
                     }
 
                     let option_idx = (choice_num - 1) as i64;
@@ -109,9 +112,16 @@ impl Plugin for PollPlugin {
                     .execute(&ctx.db)
                     .await?;
 
-                    Ok(Some(format!("🗳️ {}, je stem op optie [{}] '{}' is geregistreerd!", cmd.author, choice_num, options[choice_num - 1])))
+                    let voted_msg = ctx.locale.tf(
+                        "poll_voted",
+                        &[
+                            ("choice", &choice_num.to_string()),
+                            ("option", &options[choice_num - 1]),
+                        ],
+                    );
+                    Ok(Some(format!("🗳️ {}, {}", cmd.author, voted_msg)))
                 } else {
-                    Ok(Some("Er is momenteel geen actieve peiling in dit kanaal.".into()))
+                    Ok(Some(ctx.locale.t("poll_none_active").into()))
                 }
             }
             "end" => {
@@ -143,20 +153,22 @@ impl Plugin for PollPlugin {
                         }
                     }
 
+                    let votes_word = if ctx.locale.is_dutch() { "stemmen" } else { "votes" };
                     let mut summary = Vec::new();
                     for (idx, opt) in options.iter().enumerate() {
-                        summary.push(format!("{}: {} stemmen", opt, counts[idx]));
+                        summary.push(format!("{}: {} {}", opt, counts[idx], votes_word));
                     }
 
+                    let result_title = if ctx.locale.is_dutch() { "Uitslag Peiling" } else { "Poll Results" };
                     Ok(Some(format!(
-                        "🏁 [Uitslag Peiling: \"{}\"] {}",
-                        poll.question, summary.join(" | ")
+                        "🏁 [{}: \"{}\"] {}",
+                        result_title, poll.question, summary.join(" | ")
                     )))
                 } else {
-                    Ok(Some("Geen actieve peiling om te beëindigen.".into()))
+                    Ok(Some(ctx.locale.t("poll_none_active").into()))
                 }
             }
-            _ => Ok(Some("Gebruik: !poll start \"Vraag?\" optie1/optie2 | !poll vote <nummer> | !poll end".into())),
+            _ => Ok(Some(ctx.locale.t("poll_usage").into())),
         }
     }
 }

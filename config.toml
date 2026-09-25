@@ -1,5 +1,6 @@
 [general]
 language = "en" # Default chat output language: "en" (English) or "nl" (Dutch)
+command_prefixes = ["!", "."] # Recognized command prefixes in chat (e.g. !weer, .weather)
 bot_owner_discord_id = 0
 bot_owner_irc_nick = "Kuuke"
 http_port = 9090
@@ -18,6 +19,14 @@ sync_edits = true
 irc_channel = "#algemeen"
 discord_channel_id = 123456789012345678
 discord_webhook_url = "https://discord.com/api/webhooks/..."
+# Optional channel language override: "nl", "en", "de", "fr", "es" (defaults to [general].language if omitted)
+# language = "nl"
+
+# [[channels]]
+# irc_channel = "#english"
+# discord_channel_id = 987654321098765432
+# discord_webhook_url = "https://discord.com/api/webhooks/..."
+# language = "en"
 
 # WhatPulse Instellingen ("Team de Apen")
 [whatpulse]

@@ -232,10 +232,10 @@ impl Plugin for GooglePlugin {
     ) -> Result<Option<String>, Box<dyn std::error::Error + Send + Sync>> {
         let query = cmd.args.trim();
         if query.is_empty() {
-            return Ok(Some("ℹ️ Gebruik: !g <zoekterm>".to_string()));
+            return Ok(Some(ctx.locale.t("google_usage").to_string()));
         }
 
-        // 1. Controleer of Google Custom Search API is geconfigureerd
+        // 1. Check if Google Custom Search API is configured
         if let (Ok(key), Ok(cx)) = (std::env::var("GOOGLE_API_KEY"), std::env::var("GOOGLE_CSE_ID")) {
             if !key.is_empty() && !cx.is_empty() {
                 if let Some(res) = Self::search_google_cse(&ctx.http, &key, &cx, query).await {
@@ -244,7 +244,7 @@ impl Plugin for GooglePlugin {
             }
         }
 
-        // 2. Probeer HTML web scraping via DuckDuckGo
+        // 2. HTML web scraping via DuckDuckGo
         if let Some(res) = Self::search_ddg_html(&ctx.http, query).await {
             return Ok(Some(res));
         }
@@ -254,9 +254,6 @@ impl Plugin for GooglePlugin {
             return Ok(Some(res));
         }
 
-        Ok(Some(format!(
-            "🔍 Geen zoekresultaten gevonden voor: \"{}\"",
-            query
-        )))
+        Ok(Some(ctx.locale.tf("google_not_found", &[("query", query)])))
     }
 }

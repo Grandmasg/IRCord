@@ -15,10 +15,28 @@ pub struct Config {
     pub open_meteo: OpenMeteoConfig,
 }
 
+impl Config {
+    /// Returns the effective language for a specific channel, falling back to general default
+    pub fn channel_language(&self, platform: &str, channel: &str) -> &str {
+        for m in &self.channels {
+            if (platform == "irc" && m.irc_channel.eq_ignore_ascii_case(channel))
+                || (platform == "discord" && (m.discord_channel_id.to_string() == channel || m.irc_channel.eq_ignore_ascii_case(channel)))
+            {
+                if let Some(ref lang) = m.language {
+                    return lang.as_str();
+                }
+            }
+        }
+        &self.general.language
+    }
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct GeneralConfig {
     #[serde(default = "default_language")]
     pub language: String,
+    #[serde(default = "default_command_prefixes")]
+    pub command_prefixes: Vec<String>,
     pub bot_owner_discord_id: u64,
     pub bot_owner_irc_nick: String,
     #[serde(default = "default_http_port")]
@@ -31,8 +49,36 @@ pub struct GeneralConfig {
     pub admin_channel_discord_id: u64,
 }
 
+impl GeneralConfig {
+    /// Strips a configured command prefix from the input if it matches any
+    pub fn strip_command_prefix<'a>(&self, text: &'a str) -> Option<&'a str> {
+        let trimmed = text.trim();
+        for prefix in &self.command_prefixes {
+            if trimmed.starts_with(prefix) {
+                return Some(trimmed[prefix.len()..].trim_start());
+            }
+        }
+        None
+    }
+
+    /// Checks if a message starts with any configured command prefix
+    pub fn is_command_trigger(&self, text: &str) -> bool {
+        let trimmed = text.trim();
+        for prefix in &self.command_prefixes {
+            if trimmed.starts_with(prefix) {
+                return true;
+            }
+        }
+        false
+    }
+}
+
 fn default_language() -> String {
     "en".to_string()
+}
+
+fn default_command_prefixes() -> Vec<String> {
+    vec!["!".to_string(), ".".to_string()]
 }
 
 fn default_admin_channel_irc() -> String {
@@ -80,6 +126,8 @@ pub struct ChannelMapping {
     pub irc_channel: String,
     pub discord_channel_id: u64,
     pub discord_webhook_url: String,
+    #[serde(default)]
+    pub language: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -219,5 +267,81 @@ impl Config {
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_load_example_configs() {
+        let en_cfg = Config::load_from_file("config.example.toml").expect("config.example.toml should be valid");
+        assert_eq!(en_cfg.general.language, "en");
+        assert_eq!(en_cfg.general.command_prefixes, vec!["!", "."]);
+
+        let nl_cfg = Config::load_from_file("config.example.nl.toml").expect("config.example.nl.toml should be valid");
+        assert_eq!(nl_cfg.general.language, "nl");
+        assert_eq!(nl_cfg.general.command_prefixes, vec!["!", "."]);
+
+        let de_cfg = Config::load_from_file("config.example.de.toml").expect("config.example.de.toml should be valid");
+        assert_eq!(de_cfg.general.language, "de");
+        assert_eq!(de_cfg.general.command_prefixes, vec!["!", "."]);
+    }
+
+    #[test]
+    fn test_channel_language_cascade() {
+        let toml_str = r##"
+        [general]
+        language = "en"
+        command_prefixes = ["!", "."]
+        bot_owner_discord_id = 0
+        bot_owner_irc_nick = "Kuuke"
+        http_port = 9090
+        pastebin_threshold_lines = 4
+        admin_channel_irc = "#bot-logs"
+
+        [bridge]
+        loop_prevent_timeout_sec = 10
+        lru_cache_capacity = 2000
+        sync_presence = true
+        sync_edits = true
+
+        [[channels]]
+        irc_channel = "#dutch"
+        discord_channel_id = 111111111111111111
+        discord_webhook_url = "https://discord.com/api/webhooks/1"
+        language = "nl"
+
+        [[channels]]
+        irc_channel = "#default"
+        discord_channel_id = 222222222222222222
+        discord_webhook_url = "https://discord.com/api/webhooks/2"
+
+        [whatpulse]
+        team_name = "Team de Apen"
+        api_url = "https://whatpulse.org/api/v1"
+
+        [ai]
+        base_url = "http://127.0.0.1:1919/v1"
+        default_model = "default"
+
+        [moderation]
+        irc_flood_delay_ms = 800
+        irc_line_max_bytes = 380
+
+        [open_meteo]
+        daily_limit = 9500
+        "##;
+
+        let cfg: Config = toml::from_str(toml_str).expect("Valid config");
+        // IRC channel with explicit language
+        assert_eq!(cfg.channel_language("irc", "#dutch"), "nl");
+        // Discord channel with explicit language
+        assert_eq!(cfg.channel_language("discord", "111111111111111111"), "nl");
+        // IRC channel without explicit language -> fallback to general
+        assert_eq!(cfg.channel_language("irc", "#default"), "en");
+        // Unknown channel -> fallback to general
+        assert_eq!(cfg.channel_language("irc", "#unknown"), "en");
     }
 }

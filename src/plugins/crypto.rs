@@ -95,8 +95,8 @@ impl CryptoPlugin {
 
         if !resp.status().is_success() {
             return Ok(Some(format!(
-                "🪙 Kon cryptokoers voor '{}' niet ophalen (munt niet gevonden of API rate-limit).",
-                ticker
+                "🪙 {}",
+                ctx.locale.tf("crypto_error", &[("ticker", ticker)])
             )));
         }
 
@@ -105,8 +105,8 @@ impl CryptoPlugin {
             Some(d) => d,
             None => {
                 return Ok(Some(format!(
-                    "🪙 Geen koersdata gevonden voor '{}'. Probeer bijv: !crypto btc of !crypto eth",
-                    ticker
+                    "🪙 {}",
+                    ctx.locale.tf("crypto_not_found", &[("ticker", ticker)])
                 )))
             }
         };
@@ -116,13 +116,17 @@ impl CryptoPlugin {
         let change_24h = data.eur_24h_change.or(data.usd_24h_change).unwrap_or(0.0);
 
         let trend_icon = if change_24h >= 0.0 { "📈 +" } else { "📉 " };
+        let period_label = if ctx.locale.is_dutch() { "24u" } else { "24h" };
+        let title = ctx.locale.t("currency_crypto_title");
 
         Ok(Some(format!(
-            "🪙 [Crypto] {} ({}): €{} / ${} | 24u: {}{:.2}%",
+            "🪙 [{}] {} ({}): €{} / ${} | {}: {}{:.2}%",
+            title,
             display_name,
             display_symbol.to_uppercase(),
             format_price(eur),
             format_price(usd),
+            period_label,
             trend_icon,
             change_24h
         )))
@@ -135,7 +139,7 @@ impl CryptoPlugin {
     ) -> Result<Option<String>, Box<dyn std::error::Error + Send + Sync>> {
         let parts: Vec<&str> = args.split_whitespace().collect();
         if parts.is_empty() {
-            return Ok(Some("Gebruik: !valuta <bedrag> <van> <naar> (bijv: !valuta 100 usd eur)".into()));
+            return Ok(Some(ctx.locale.t("currency_usage").into()));
         }
 
         let (amount, from_curr, to_curr) = if parts.len() == 1 {
@@ -149,8 +153,8 @@ impl CryptoPlugin {
         } else {
             let num = parts[0].parse::<f64>().unwrap_or(1.0);
             let from = parts[1].to_uppercase();
-            // Als er 'naar' of 'to' tussen staat: !valuta 100 usd naar eur
-            let to = if parts.len() >= 4 && (parts[2].eq_ignore_ascii_case("naar") || parts[2].eq_ignore_ascii_case("to") || parts[2].eq_ignore_ascii_case("in")) {
+            // Support 'naar', 'to', 'nach' or 'in': !valuta 100 usd to eur
+            let to = if parts.len() >= 4 && (parts[2].eq_ignore_ascii_case("naar") || parts[2].eq_ignore_ascii_case("to") || parts[2].eq_ignore_ascii_case("nach") || parts[2].eq_ignore_ascii_case("in")) {
                 parts[3].to_uppercase()
             } else {
                 parts[2].to_uppercase()
@@ -166,18 +170,20 @@ impl CryptoPlugin {
         let resp = ctx.http.get(&url).send().await?;
         if !resp.status().is_success() {
             return Ok(Some(format!(
-                "💱 Wisselkoers niet gevonden voor {} -> {}. Controleer de valutasymbolen (bijv. EUR, USD, GBP, JPY).",
-                from_curr, to_curr
+                "💱 {}",
+                ctx.locale.tf("currency_not_found", &[("from", &from_curr), ("to", &to_curr)])
             )));
         }
 
         let data: FrankfurterResponse = resp.json().await?;
         let rate_val = data.rates.get(&to_curr).copied().unwrap_or(0.0);
         let single_rate = if data.amount > 0.0 { rate_val / data.amount } else { rate_val };
+        let fx_title = ctx.locale.t("currency_fx_title");
+        let rate_title = ctx.locale.t("currency_rate");
 
         Ok(Some(format!(
-            "💱 [Valuta] {:.2} {} = {:.2} {} (Koers: 1 {} = {:.4} {})",
-            data.amount, data.base, rate_val, to_curr, data.base, single_rate, to_curr
+            "💱 [{}] {:.2} {} = {:.2} {} ({}: 1 {} = {:.4} {})",
+            fx_title, data.amount, data.base, rate_val, to_curr, rate_title, data.base, single_rate, to_curr
         )))
     }
 }

@@ -24,14 +24,14 @@ impl Plugin for TellPlugin {
     ) -> Result<Option<String>, Box<dyn std::error::Error + Send + Sync>> {
         let parts: Vec<&str> = cmd.args.trim().splitn(2, ' ').collect();
         if parts.len() < 2 || parts[0].is_empty() || parts[1].trim().is_empty() {
-            return Ok(Some("ℹ️ Gebruik: !tell <gebruiker> <bericht>".to_string()));
+            return Ok(Some(format!("ℹ️ {}", ctx.locale.t("tell_usage"))));
         }
 
         let recipient = parts[0].trim();
         let message = parts[1].trim();
 
         if recipient.eq_ignore_ascii_case(&cmd.author) {
-            return Ok(Some("⚠️ Je kunt geen memo aan jezelf achterlaten.".to_string()));
+            return Ok(Some(format!("⚠️ {}", ctx.locale.t("tell_self"))));
         }
 
         sqlx::query(
@@ -45,8 +45,8 @@ impl Plugin for TellPlugin {
         .await?;
 
         Ok(Some(format!(
-            "📝 Memo voor \x02{}\x02 opgeslagen. Ik geef het door zodra diegene actief is!",
-            recipient
+            "📝 {}",
+            ctx.locale.tf("tell_saved", &[("recipient", recipient)])
         )))
     }
 
@@ -55,7 +55,7 @@ impl Plugin for TellPlugin {
         ctx: &PluginContext,
         msg: &MessageEvent,
     ) -> Result<Option<String>, Box<dyn std::error::Error + Send + Sync>> {
-        // Controleer of er onbezorgde memo's klaarliggen voor deze afzender
+        // Check for pending memos for this recipient
         let rows: Vec<(i64, String, String, Option<String>)> = sqlx::query_as(
             "SELECT id, sender, message, created_at FROM memos WHERE LOWER(recipient) = LOWER(?) AND delivered_at IS NULL ORDER BY id ASC LIMIT 5",
         )
@@ -72,14 +72,16 @@ impl Plugin for TellPlugin {
 
         for (id, sender, memo_text, created_at) in rows {
             ids.push(id);
-            let time_str = created_at.unwrap_or_else(|| "onlangs".to_string());
+            let time_str = created_at.unwrap_or_else(|| {
+                if ctx.locale.is_dutch() { "onlangs" } else { "recently" }.to_string()
+            });
             notes.push(format!(
-                "📬 [Memo van \x02{}\x02 ({})]: {}",
-                sender, time_str, memo_text
+                "📬 {}",
+                ctx.locale.tf("tell_received_item", &[("sender", &sender), ("time", &time_str), ("message", &memo_text)])
             ));
         }
 
-        // Markeer als afgeleverd
+        // Mark as delivered
         for id in ids {
             let _ = sqlx::query("UPDATE memos SET delivered_at = CURRENT_TIMESTAMP WHERE id = ?")
                 .bind(id)
@@ -87,10 +89,7 @@ impl Plugin for TellPlugin {
                 .await;
         }
 
-        Ok(Some(format!(
-            "Hallo \x02{}\x02, je hebt openstaande memo's:\n{}",
-            msg.author,
-            notes.join("\n")
-        )))
+        let header = ctx.locale.tf("tell_received_header", &[("author", &msg.author)]);
+        Ok(Some(format!("{}\n{}", header, notes.join("\n"))))
     }
 }

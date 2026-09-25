@@ -36,7 +36,7 @@ use plugins::{
     url_titler::UrlTitlerPlugin, weather::WeatherPlugin, whatpulse::WhatPulsePlugin,
     wiki::WikipediaPlugin, youtube::YouTubePlugin, birthday::BirthdayPlugin,
     identity::IdentityPlugin, sysadmin::SysadminPlugin, rss::RssPlugin, tech::TechPlugin,
-    rhai::RhaiPlugin,
+    rhai::RhaiPlugin, lang::LangPlugin,
     MessageEvent, PluginContext, PluginManager,
 };
 use utils::error_log::ErrorLogger;
@@ -61,15 +61,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     info!("   IRCord: Hybride IRC-Discord AI Bot Daemon (Rust 2021)   ");
     info!("===========================================================");
 
-    // 3. Laad en valideer config.toml
-    let config_path = "config.toml";
-    let cfg = match Config::load_from_file(config_path) {
+    // 3. Laad en valideer config.toml (of CONFIG_PATH indien opgegeven)
+    let config_path = std::env::var("CONFIG_PATH").unwrap_or_else(|_| "config.toml".to_string());
+    let cfg = match Config::load_from_file(&config_path) {
         Ok(c) => {
             info!("Configuratie succesvol geladen vanuit {}", config_path);
             c
         }
         Err(err) => {
-            error!("Fout bij laden van configuratie: {}", err);
+            error!("Fout bij laden van configuratie vanuit {}: {}", config_path, err);
             return Err(err);
         }
     };
@@ -124,6 +124,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let cfg_arc = Arc::new(cfg.clone());
     let error_logger = Arc::new(ErrorLogger::new(100));
     let locale_manager = Arc::new(LocaleManager::load("locales", &cfg.general.language));
+    if let Err(e) = locale_manager.load_preferences_from_db(&pool).await {
+        warn!("Failed to load user language preferences: {}", e);
+    }
     let open_meteo_quota = Arc::new(crate::utils::quota::ApiQuotaGovernor::new(
         "Open-Meteo",
         cfg.open_meteo.minutely_limit,
@@ -145,6 +148,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     };
 
     let mut plugin_mgr = PluginManager::new(plugin_ctx);
+    plugin_mgr.register(Box::new(LangPlugin));
     plugin_mgr.register(Box::new(WhatPulsePlugin::new()));
     plugin_mgr.register(Box::new(AiPlugin));
     plugin_mgr.register(Box::new(PresencePlugin));
@@ -184,7 +188,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let (inbound_tx, mut inbound_rx) = mpsc::channel::<BridgeMessage>(256);
     let (outbound_irc_tx, outbound_irc_rx) = mpsc::channel::<BridgeMessage>(256);
 
-    let bridge_router = Arc::new(BridgeRouter::new(cfg.channels.clone(), cfg.bridge.lru_cache_capacity));
+    let bridge_router = Arc::new(BridgeRouter::with_prefixes(
+        cfg.channels.clone(),
+        cfg.bridge.lru_cache_capacity,
+        cfg.general.command_prefixes.clone(),
+    ));
     let webhook_dispatcher = Arc::new(WebhookDispatcher::new());
 
     // 8. Initialiseer Graceful Shutdown Handler

@@ -120,7 +120,7 @@ impl Plugin for UrlTitlerPlugin {
                 _ => return Ok(None),
             };
 
-            // Controleer of de content-type html is
+            // Check if the content-type is html
             if let Some(ct) = resp.headers().get("content-type") {
                 if !ct.to_str().unwrap_or("").contains("text/html") {
                     return Ok(None);
@@ -134,7 +134,8 @@ impl Plugin for UrlTitlerPlugin {
             if let Some(element) = document.select(&title_selector).next() {
                 let title = element.text().collect::<Vec<_>>().join(" ").trim().replace('\n', " ");
                 if !title.is_empty() {
-                    return Ok(Some(format!("🔗 [Link Titel] {}", title)));
+                    let label = ctx.locale.t("link_title");
+                    return Ok(Some(format!("🔗 [{}] {}", label, title)));
                 }
             }
         }

@@ -89,24 +89,24 @@ impl BirthdayPlugin {
             let message = if let Some(birth_year) = year {
                 let age = current_year - (birth_year as i32);
                 format!(
-                    "🎂 🎉 🎈 Gefeliciteerd met je verjaardag, \x02{}\x02! Vandaag \x02{}\x02 jaar geworden! Maak er een geweldige dag van! 🥳 🍰",
+                    "🎂 🎉 🎈 Happy Birthday, \x02{}\x02! Turning \x02{}\x02 today! Have a wonderful day! 🥳 🍰",
                     display_name, age
                 )
             } else {
                 format!(
-                    "🎂 🎉 🎈 Gefeliciteerd met je verjaardag, \x02{}\x02! Een hele fijne en feestelijke dag gewenst! 🥳 🍰",
+                    "🎂 🎉 🎈 Happy Birthday, \x02{}\x02! Wishing you a wonderful and festive day! 🥳 🍰",
                     display_name
                 )
             };
 
-            // Werk direct last_celebrated_year bij
+            // Update last_celebrated_year
             sqlx::query("UPDATE birthdays SET last_celebrated_year = ? WHERE id = ?")
                 .bind(current_year as i64)
                 .bind(id)
                 .execute(pool)
                 .await?;
 
-            info!("Verjaardagsaankondiging klaargezet voor {} in kanaal {}", display_name, channel);
+            info!("Birthday celebration prepared for {} in channel {}", display_name, channel);
             announcements.push((channel, message));
         }
 
@@ -125,7 +125,7 @@ impl Plugin for BirthdayPlugin {
     }
 
     fn help(&self) -> &'static str {
-        "!bday set <DD-MM[-JJJJ]> | !bday next | !bday [nick] | !bday del - Geautomatiseerde verjaardagsfelicitaties"
+        "!bday set <DD-MM[-YYYY]> | !bday next | !bday [nick] | !bday del - Automated birthday announcements"
     }
 
     async fn on_command(
@@ -135,16 +135,15 @@ impl Plugin for BirthdayPlugin {
     ) -> Result<Option<String>, Box<dyn std::error::Error + Send + Sync>> {
         let args = cmd.args.trim();
         let today = Local::now().date_naive();
+        let is_dutch = ctx.locale.is_dutch();
 
-        // 1. Instellen van verjaardag: !bday set <DD-MM[-JJJJ]>
+        // 1. Set birthday: !bday set <DD-MM[-YYYY]>
         if args.to_lowercase().starts_with("set ") {
             let date_str = args[4..].trim();
             let (day, month, year) = match Self::parse_date(date_str) {
                 Some(parsed) => parsed,
                 None => {
-                    return Ok(Some(
-                        "⚠️ Ongeldige datum. Gebruik het formaat: !bday set DD-MM (bijv. !bday set 24-09) of met jaar (bijv. !bday set 24-09-1995)".to_string(),
-                    ));
+                    return Ok(Some(ctx.locale.t("birthday_usage").to_string()));
                 }
             };
 
@@ -178,21 +177,28 @@ impl Plugin for BirthdayPlugin {
                 None => String::new(),
             };
 
+            let formatted_date = format!("{:02}-{:02}{}", day, month, year_str);
             let days_str = if days_left == 0 {
-                "VANDAAG! Gefeliciteerd! 🎉".to_string()
+                if is_dutch { "VANDAAG! Gefeliciteerd! 🎉" } else { "TODAY! Happy Birthday! 🎉" }
             } else if days_left == 1 {
-                "morgen! 🎈".to_string()
+                if is_dutch { "morgen! 🎈" } else { "tomorrow! 🎈" }
             } else {
-                format!("over {} dagen 🎈", days_left)
+                &if is_dutch { format!("over {} dagen 🎈", days_left) } else { format!("in {} days 🎈", days_left) }
             };
 
-            return Ok(Some(format!(
-                "🎂 [Verjaardag] Opgeslagen voor \x02{}\x02! Jouw verjaardag staat op \x02{:02}-{:02}{}\x02 (dat is {}). Ik zal je 's ochtends feliciteren in {}!",
-                cmd.author, day, month, year_str, days_str, cmd.channel
-            )));
+            let reply = ctx.locale.tf(
+                "birthday_saved",
+                &[
+                    ("author", &cmd.author),
+                    ("date", &formatted_date),
+                    ("relative", days_str),
+                    ("channel", &cmd.channel),
+                ],
+            );
+            return Ok(Some(reply));
         }
 
-        // 2. Verwijderen: !bday del / !bday remove
+        // 2. Remove: !bday del / !bday remove
         if args.eq_ignore_ascii_case("del") || args.eq_ignore_ascii_case("remove") {
             let res = sqlx::query("DELETE FROM birthdays WHERE user_id = ? AND platform = ?")
                 .bind(&cmd.author)
@@ -201,16 +207,13 @@ impl Plugin for BirthdayPlugin {
                 .await?;
 
             if res.rows_affected() > 0 {
-                return Ok(Some(format!(
-                    "🗑️ [Verjaardag] Jouw verjaardag is succesvol verwijderd voor \x02{}\x02.",
-                    cmd.author
-                )));
+                return Ok(Some(ctx.locale.tf("birthday_deleted", &[("author", &cmd.author)])));
             } else {
-                return Ok(Some("ℹ️ Je had nog geen verjaardag geregistreerd.".to_string()));
+                return Ok(Some(ctx.locale.t("birthday_not_registered").to_string()));
             }
         }
 
-        // 3. Eerstvolgende verjaardagen bekijken: !bday next / !bday list / !bday upcoming
+        // 3. Upcoming birthdays: !bday next / !bday list / !bday upcoming
         if args.eq_ignore_ascii_case("next")
             || args.eq_ignore_ascii_case("upcoming")
             || args.eq_ignore_ascii_case("list")
@@ -222,7 +225,7 @@ impl Plugin for BirthdayPlugin {
             .await?;
 
             if rows.is_empty() {
-                return Ok(Some("ℹ️ Er zijn nog geen verjaardagen geregistreerd. Stel de jouwe in met !bday set DD-MM!".to_string()));
+                return Ok(Some(ctx.locale.t("birthday_none_registered").to_string()));
             }
 
             let mut list: Vec<(String, u32, u32, Option<i32>, i64)> = rows
@@ -236,30 +239,32 @@ impl Plugin for BirthdayPlugin {
                 })
                 .collect();
 
-            // Sorteer op aantal resterende dagen oplopend
+            // Sort by remaining days ascending
             list.sort_by_key(|item| item.4);
+
+            let today_label = if is_dutch { "VANDAAG! 🎉" } else { "TODAY! 🎉" };
+            let tomorrow_label = if is_dutch { "morgen" } else { "tomorrow" };
 
             let top_items: Vec<String> = list
                 .into_iter()
                 .take(5)
                 .map(|(name, day, month, _year, days)| {
                     if days == 0 {
-                        format!("\x02{}\x02 ({:02}-{:02}, VANDAAG! 🎉)", name, day, month)
+                        format!("\x02{}\x02 ({:02}-{:02}, {})", name, day, month, today_label)
                     } else if days == 1 {
-                        format!("\x02{}\x02 ({:02}-{:02}, morgen)", name, day, month)
+                        format!("\x02{}\x02 ({:02}-{:02}, {})", name, day, month, tomorrow_label)
                     } else {
-                        format!("\x02{}\x02 ({:02}-{:02}, over {}d)", name, day, month, days)
+                        let suffix = if is_dutch { format!("over {}d", days) } else { format!("in {}d", days) };
+                        format!("\x02{}\x02 ({:02}-{:02}, {})", name, day, month, suffix)
                     }
                 })
                 .collect();
 
-            return Ok(Some(format!(
-                "🎂 [Eerstvolgende Verjaardagen] {}",
-                top_items.join(" | ")
-            )));
+            let header = ctx.locale.t("birthday_upcoming_header");
+            return Ok(Some(format!("{} {}", header, top_items.join(" | "))));
         }
 
-        // 4. Verjaardag van specifieke nick of van jezelf opvragen
+        // 4. Query specific user's birthday or own
         let target = if args.is_empty() {
             cmd.author.as_str()
         } else {
@@ -286,37 +291,45 @@ impl Plugin for BirthdayPlugin {
 
             let year_info = if let Some(birth_year) = y {
                 let age = today.year() - (birth_year as i32);
-                let age_str = if days_left == 0 {
-                    format!(" (vandaag {} jaar geworden!)", age)
+                if days_left == 0 {
+                    if is_dutch { format!(" (vandaag {} jaar geworden!)", age) } else { format!(" (turned {} today!)", age) }
                 } else {
-                    format!(" (wordt {} jaar)", age)
-                };
-                age_str
+                    if is_dutch { format!(" (wordt {} jaar)", age) } else { format!(" (turning {})", age) }
+                }
             } else {
                 String::new()
             };
 
             let days_str = if days_left == 0 {
-                "is \x02VANDAAG\x02 jarig! 🎉🎂".to_string()
+                if is_dutch { "is \x02VANDAAG\x02 jarig! 🎉🎂" } else { "is celebrating their birthday \x02TODAY\x02! 🎉🎂" }
             } else if days_left == 1 {
-                "is \x02morgen\x02 jarig! 🎈".to_string()
+                if is_dutch { "is \x02morgen\x02 jarig! 🎈" } else { "has their birthday \x02tomorrow\x02! 🎈" }
             } else {
-                format!("is jarig over \x02{}\x02 dagen", days_left)
+                &if is_dutch { format!("is jarig over \x02{}\x02 dagen", days_left) } else { format!("has their birthday in \x02{}\x02 days", days_left) }
             };
 
+            let title = if is_dutch { "Verjaardag" } else { "Birthday" };
+            let is_on = if is_dutch { "is jarig op" } else { "birthday is on" };
+            let and_phrase = if is_dutch { "en" } else { "and" };
+
             Ok(Some(format!(
-                "🎂 [Verjaardag] \x02{}\x02 is jarig op \x02{:02}-{:02}\x02{} en {}.",
-                name, day, month, year_info, days_str
+                "🎂 [{}] \x02{}\x02 {} \x02{:02}-{:02}\x02{} {} {}.",
+                title, name, is_on, day, month, year_info, and_phrase, days_str
             )))
         } else if args.is_empty() {
-            Ok(Some(
-                "ℹ️ Je hebt nog geen verjaardag ingesteld. Gebruik: !bday set DD-MM (of DD-MM-JJJJ) | !bday next".to_string(),
-            ))
+            let msg = if is_dutch {
+                "ℹ️ Je hebt nog geen verjaardag ingesteld. Gebruik: !bday set DD-MM (of DD-MM-JJJJ) | !bday next"
+            } else {
+                "ℹ️ You have not set a birthday yet. Use: !bday set DD-MM (or DD-MM-YYYY) | !bday next"
+            };
+            Ok(Some(msg.to_string()))
         } else {
-            Ok(Some(format!(
-                "ℹ️ Geen verjaardag gevonden voor '{}'. Stel in met: !bday set DD-MM",
-                target
-            )))
+            let msg = if is_dutch {
+                format!("ℹ️ Geen verjaardag gevonden voor '{}'. Stel in met: !bday set DD-MM", target)
+            } else {
+                format!("ℹ️ No birthday found for '{}'. Set with: !bday set DD-MM", target)
+            };
+            Ok(Some(msg))
         }
     }
 }

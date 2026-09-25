@@ -23,7 +23,7 @@ impl Plugin for SedPlugin {
     fn name(&self) -> &'static str { "sed" }
     fn help(&self) -> &'static str { "s/oud/nieuw/ - Corrigeert een typefout in je vorige bericht" }
 
-    async fn on_message(&self, _ctx: &PluginContext, msg: &MessageEvent) -> Result<Option<String>, Box<dyn std::error::Error + Send + Sync>> {
+    async fn on_message(&self, ctx: &PluginContext, msg: &MessageEvent) -> Result<Option<String>, Box<dyn std::error::Error + Send + Sync>> {
         let re = SED_REGEX.get_or_init(|| {
             Regex::new(r"^s/([^/]+)/([^/]*)/?([gG]?)$").unwrap()
         });
@@ -47,8 +47,8 @@ impl Plugin for SedPlugin {
                     return Ok(Some(format!("✏️ <{}> {}", msg.author, corrected)));
                 }
             }
-        } else if !trimmed.starts_with('!') && !trimmed.starts_with('.') {
-            // Sla het laatste reguliere bericht op
+        } else if !ctx.config.general.is_command_trigger(trimmed) {
+            // Save the last regular chat message
             let mut lock = self.last_messages.lock().unwrap();
             lock.insert(msg.author.to_lowercase(), msg.content.clone());
         }

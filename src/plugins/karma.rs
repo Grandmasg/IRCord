@@ -32,7 +32,8 @@ impl Plugin for KarmaPlugin {
         .await?;
 
         let score = row.total.unwrap_or(0);
-        Ok(Some(format!("⭐ [Karma] {} heeft een score van {}", target, score)))
+        let score_str = score.to_string();
+        Ok(Some(ctx.locale.tf("karma_score", &[("target", target), ("score", &score_str)])))
     }
 
     async fn on_message(&self, ctx: &PluginContext, msg: &MessageEvent) -> Result<Option<String>, Box<dyn std::error::Error + Send + Sync>> {
@@ -44,9 +45,9 @@ impl Plugin for KarmaPlugin {
             let target = caps.get(1).map_or("", |m| m.as_str());
             let op = caps.get(2).map_or("", |m| m.as_str());
 
-            // Zelf-stemmen niet toegestaan
+            // Self-voting not allowed
             if target.eq_ignore_ascii_case(&msg.author) {
-                return Ok(Some(format!("🚫 {}, je mag je eigen karma niet aanpassen!", msg.author)));
+                return Ok(Some(ctx.locale.tf("karma_self", &[("author", &msg.author)])));
             }
 
             let action = if op == "++" { "karma_up" } else { "karma_down" };
@@ -64,7 +65,7 @@ impl Plugin for KarmaPlugin {
             .execute(&ctx.db)
             .await?;
 
-            // Haal nieuwe score op
+            // Fetch new score
             let row = sqlx::query!(
                 r#"
                 SELECT SUM(CASE WHEN action = 'karma_up' THEN 1 WHEN action = 'karma_down' THEN -1 ELSE 0 END) as total
@@ -77,7 +78,8 @@ impl Plugin for KarmaPlugin {
             .await?;
 
             let score = row.total.unwrap_or(0);
-            return Ok(Some(format!("⭐ [Karma] {} heeft nu een score van {}", target, score)));
+            let score_str = score.to_string();
+            return Ok(Some(ctx.locale.tf("karma_new_score", &[("target", target), ("score", &score_str)])));
         }
 
         Ok(None)

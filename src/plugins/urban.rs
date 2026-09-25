@@ -39,7 +39,7 @@ impl Plugin for UrbanDictionaryPlugin {
     ) -> Result<Option<String>, Box<dyn std::error::Error + Send + Sync>> {
         let term = cmd.args.trim();
         if term.is_empty() {
-            return Ok(Some("Gebruik: !ud <zoekterm>".into()));
+            return Ok(Some(ctx.locale.t("urban_usage").into()));
         }
 
         let url = format!(
@@ -55,17 +55,19 @@ impl Plugin for UrbanDictionaryPlugin {
             .await?;
 
         if !resp.status().is_success() {
-            return Ok(Some(format!(
-                "📚 Kon Urban Dictionary niet bereiken voor '{}'.",
-                term
-            )));
+            let err_msg = if ctx.locale.is_dutch() {
+                format!("📚 Kon Urban Dictionary niet bereiken voor '{}'.", term)
+            } else {
+                format!("📚 Could not reach Urban Dictionary for '{}'.", term)
+            };
+            return Ok(Some(err_msg));
         }
 
         let data: UrbanResponse = resp.json().await?;
         if data.list.is_empty() {
             return Ok(Some(format!(
-                "📚 Geen definitie gevonden op Urban Dictionary voor '{}'.",
-                term
+                "📚 {}",
+                ctx.locale.tf("urban_not_found", &[("term", term)])
             )));
         }
 
@@ -73,13 +75,14 @@ impl Plugin for UrbanDictionaryPlugin {
         let clean_def = clean_text(&entry.definition, 200);
         let up = entry.thumbs_up.unwrap_or(0);
         let down = entry.thumbs_down.unwrap_or(0);
+        let ex_prefix = ctx.locale.t("urban_example_prefix");
 
         let reply = if let Some(ref ex) = entry.example {
             let clean_ex = clean_text(ex, 120);
             if !clean_ex.is_empty() {
                 format!(
-                    "📚 [Urban] {}: {} | Vb: \"{}\" (👍 {} / 👎 {})",
-                    entry.word, clean_def, clean_ex, up, down
+                    "📚 [Urban] {}: {} | {} \"{}\" (👍 {} / 👎 {})",
+                    entry.word, clean_def, ex_prefix, clean_ex, up, down
                 )
             } else {
                 format!(

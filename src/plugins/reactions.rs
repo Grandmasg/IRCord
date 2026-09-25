@@ -52,9 +52,9 @@ impl Plugin for ReactionsPlugin {
         ctx: &PluginContext,
         msg: &MessageEvent,
     ) -> Result<Option<String>, Box<dyn std::error::Error + Send + Sync>> {
-        // Negeer bot's eigen berichten of commando's
+        // Ignore bot's own messages or commands
         let trimmed = msg.content.trim();
-        if trimmed.starts_with('!') || trimmed.starts_with('.') || msg.author.eq_ignore_ascii_case("IRCord") {
+        if ctx.config.general.is_command_trigger(trimmed) || msg.author.eq_ignore_ascii_case("IRCord") {
             return Ok(None);
         }
 

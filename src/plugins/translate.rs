@@ -36,7 +36,8 @@ impl Plugin for TranslatePlugin {
         cmd: &CommandEvent,
     ) -> Result<Option<String>, Box<dyn std::error::Error + Send + Sync>> {
         let args = cmd.args.trim();
-        let is_dutch = ctx.config.general.language == "nl";
+        let is_dutch = ctx.locale.is_dutch();
+        let default_target = ctx.locale.language();
 
         if args.is_empty() {
             let usage = if is_dutch {
@@ -47,29 +48,30 @@ impl Plugin for TranslatePlugin {
             return Ok(Some(usage.into()));
         }
 
-        // Parse optioneel taalpaar: "en:nl", "nl:en", "de:nl", "es:en", etc.
+        // Parse optional language pair: "en:nl", "nl:en", "de:nl", "es:en", etc.
         let (lang_from, lang_to, text_to_translate) = if let Some((first, rest)) = args.split_once(' ') {
             if first.contains(':') {
                 let mut parts = first.splitn(2, ':');
                 let from = parts.next().unwrap_or("auto").to_lowercase();
-                let to = parts.next().unwrap_or("nl").to_lowercase();
+                let to = parts.next().unwrap_or(default_target).to_lowercase();
                 (from, to, rest.trim())
             } else if first.len() == 2 && (first == "en" || first == "nl" || first == "de" || first == "fr" || first == "es") {
                 ("auto".to_string(), first.to_lowercase(), rest.trim())
             } else {
-                ("auto".to_string(), "nl".to_string(), args)
+                ("auto".to_string(), default_target.to_string(), args)
             }
         } else {
-            ("auto".to_string(), "nl".to_string(), args)
+            ("auto".to_string(), default_target.to_string(), args)
         };
 
         if text_to_translate.is_empty() {
-            return Ok(Some("Gebruik: !tr [van:naar] <tekst>".into()));
+            let usage_sub = if is_dutch { "Gebruik: !tr [van:naar] <tekst>" } else { "Usage: !tr [from:to] <text>" };
+            return Ok(Some(usage_sub.into()));
         }
 
-        let ai_label = if is_dutch { "AI Vertaling" } else { "AI Translation" };
+        let ai_label = ctx.locale.t("ai_translation_title");
         let deepl_label = "DeepL";
-        let web_label = if is_dutch { "Vertaling" } else { "Translation" };
+        let web_label = ctx.locale.t("web_translation_title");
 
         // 1. Check officiële DeepL API v2 indien DEEPL_API_KEY is ingesteld
         if let Ok(key) = std::env::var("DEEPL_API_KEY") {

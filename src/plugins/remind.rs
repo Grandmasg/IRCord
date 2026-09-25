@@ -17,14 +17,14 @@ impl Plugin for RemindPlugin {
         let message = parts.next().unwrap_or("").trim();
 
         if time_str.is_empty() || message.is_empty() {
-            return Ok(Some("Gebruik: !remindme <getal><m/h/d> <bericht> (bijvoorbeeld: !remindme 20m pizza uit de oven)".into()));
+            return Ok(Some(ctx.locale.t("remind_usage").into()));
         }
 
         let unit = time_str.chars().last().unwrap_or('m');
         let num_str = &time_str[..time_str.len().saturating_sub(1)];
         let count: i64 = match num_str.parse() {
             Ok(n) if n > 0 => n,
-            _ => return Ok(Some("Ongeldige tijdsaanduiding. Gebruik bijv. 10m, 2h of 1d.".into())),
+            _ => return Ok(Some(ctx.locale.t("remind_invalid_time").into())),
         };
 
         let duration = match unit {
@@ -37,24 +37,40 @@ impl Plugin for RemindPlugin {
         let trigger_at = Utc::now() + duration;
         let formatted_time = trigger_at.format("%H:%M:%S UTC").to_string();
 
-        // Sla memo op met geplande tijd in details
-        let reminder_note = format!("[HERINNERING om {}]: {}", formatted_time, message);
+        let reminder_tag = if ctx.locale.is_dutch() { "HERINNERING" } else { "REMINDER" };
+        let reminder_sender = if ctx.locale.is_dutch() { "Herinnering" } else { "Reminder" };
+        let reminder_note = format!("[{} {}]: {}", reminder_tag, formatted_time, message);
         sqlx::query!(
             r#"
             INSERT INTO memos (recipient, sender, platform, message)
             VALUES (?, ?, ?, ?)
             "#,
             cmd.author,
-            "Herinnering",
+            reminder_sender,
             cmd.platform,
             reminder_note
         )
         .execute(&ctx.db)
         .await?;
 
-        Ok(Some(format!(
-            "⏰ {}, je herinnering voor '{}' staat genoteerd (over {} {})!",
-            cmd.author, message, count, if unit == 'h' { "uur" } else if unit == 'd' { "dag(en)" } else { "minuten" }
-        )))
+        let unit_str = if unit == 'h' {
+            ctx.locale.t("remind_unit_hour")
+        } else if unit == 'd' {
+            ctx.locale.t("remind_unit_day")
+        } else {
+            ctx.locale.t("remind_unit_minute")
+        };
+        let count_str = count.to_string();
+        let confirmation = ctx.locale.tf(
+            "remind_saved",
+            &[
+                ("author", &cmd.author),
+                ("message", message),
+                ("count", &count_str),
+                ("unit", unit_str),
+            ],
+        );
+
+        Ok(Some(format!("⏰ {}", confirmation)))
     }
 }

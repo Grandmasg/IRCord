@@ -205,48 +205,51 @@ impl Plugin for YouTubePlugin {
     ) -> Result<Option<String>, Box<dyn std::error::Error + Send + Sync>> {
         let query = cmd.args.trim();
         if query.is_empty() {
-            return Ok(Some("ℹ️ Gebruik: !yt <zoekterm>".to_string()));
+            return Ok(Some(ctx.locale.t("youtube_usage").to_string()));
         }
 
-        // 1. Is het al een video URL of video ID?
+        let desc_label = ctx.locale.t("youtube_desc_prefix");
+        let by_label = ctx.locale.t("youtube_by");
+
+        // 1. Is it already a video URL or video ID?
         if let Some(caps) = Self::get_url_regex().captures(query) {
             if let Some(vid) = caps.get(1) {
                 let video_id = vid.as_str();
                 if let Some((title, author)) = Self::fetch_oembed(&ctx.http, video_id).await {
                     let desc_str = if let Some(desc) = Self::fetch_description(&ctx.http, video_id).await {
-                        format!("\n📝 \x02Omschrijving:\x02 {}", desc)
+                        format!("\n📝 \x02{}\x02 {}", desc_label, desc)
                     } else {
                         String::new()
                     };
 
                     return Ok(Some(format!(
-                        "▶️ [YouTube] \x02{}\x02 door \x02{}\x02 | https://youtu.be/{}{}",
-                        title, author, video_id, desc_str
+                        "▶️ [YouTube] \x02{}\x02 {} \x02{}\x02 | https://youtu.be/{}{}",
+                        title, by_label, author, video_id, desc_str
                     )));
                 }
             }
         }
 
-        // 2. Probeer officiële YouTube Data API v3 indien YOUTUBE_API_KEY geconfigureerd is
+        // 2. Try official YouTube Data API v3 if YOUTUBE_API_KEY is configured
         if let Ok(key) = std::env::var("YOUTUBE_API_KEY") {
             let key = key.trim();
             if !key.is_empty() {
                 if let Some((video_id, title, author, desc)) = Self::search_via_api(&ctx.http, key, query).await {
                     let desc_str = if let Some(d) = desc {
-                        format!("\n📝 \x02Omschrijving:\x02 {}", d)
+                        format!("\n📝 \x02{}\x02 {}", desc_label, d)
                     } else {
                         String::new()
                     };
 
                     return Ok(Some(format!(
-                        "▶️ [YouTube API] \x02{}\x02 door \x02{}\x02 | https://youtu.be/{}{}",
-                        title, author, video_id, desc_str
+                        "▶️ [YouTube API] \x02{}\x02 {} \x02{}\x02 | https://youtu.be/{}{}",
+                        title, by_label, author, video_id, desc_str
                     )));
                 }
             }
         }
 
-        // 3. Fallback: Zoekopdracht uitvoeren via HTML scraper en oEmbed
+        // 3. Fallback: Search via HTML scraper and oEmbed
         let encoded_query = encode_query(query);
         let search_url = format!("https://www.youtube.com/results?search_query={}", encoded_query);
 
@@ -257,13 +260,18 @@ impl Plugin for YouTubePlugin {
                 "User-Agent",
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
             )
-            .header("Accept-Language", "nl,en-US;q=0.9,en;q=0.8")
+            .header("Accept-Language", "en-US,en;q=0.9,nl;q=0.8")
             .timeout(std::time::Duration::from_secs(8))
             .send()
             .await?;
 
         if !resp.status().is_success() {
-            return Ok(Some(format!("⚠️ YouTube zoekopdracht mislukt (HTTP Status: {}).", resp.status())));
+            let err_msg = if ctx.locale.is_dutch() {
+                format!("⚠️ YouTube zoekopdracht mislukt (HTTP Status: {}).", resp.status())
+            } else {
+                format!("⚠️ YouTube search failed (HTTP Status: {}).", resp.status())
+            };
+            return Ok(Some(err_msg));
         }
 
         let body = resp.text().await?;
@@ -272,25 +280,30 @@ impl Plugin for YouTubePlugin {
                 let video_id = vid.as_str();
                 if let Some((title, author)) = Self::fetch_oembed(&ctx.http, video_id).await {
                     let desc_str = if let Some(desc) = Self::fetch_description(&ctx.http, video_id).await {
-                        format!("\n📝 \x02Omschrijving:\x02 {}", desc)
+                        format!("\n📝 \x02{}\x02 {}", desc_label, desc)
                     } else {
                         String::new()
                     };
 
                     return Ok(Some(format!(
-                        "▶️ [YouTube] \x02{}\x02 door \x02{}\x02 | https://youtu.be/{}{}",
-                        title, author, video_id, desc_str
+                        "▶️ [YouTube] \x02{}\x02 {} \x02{}\x02 | https://youtu.be/{}{}",
+                        title, by_label, author, video_id, desc_str
                     )));
                 } else {
                     return Ok(Some(format!(
-                        "▶️ [YouTube Resultaat] https://youtu.be/{}",
+                        "▶️ [YouTube] https://youtu.be/{}",
                         video_id
                     )));
                 }
             }
         }
 
-        Ok(Some(format!("🔍 Geen YouTube video's gevonden voor: \"{}\"", query)))
+        let not_found_msg = if ctx.locale.is_dutch() {
+            format!("🔍 Geen YouTube video's gevonden voor: \"{}\"", query)
+        } else {
+            format!("🔍 No YouTube videos found for: \"{}\"", query)
+        };
+        Ok(Some(not_found_msg))
     }
 
     async fn on_message(

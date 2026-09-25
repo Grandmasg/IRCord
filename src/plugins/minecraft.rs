@@ -52,7 +52,7 @@ impl Plugin for MinecraftPlugin {
     ) -> Result<Option<String>, Box<dyn std::error::Error + Send + Sync>> {
         let server = cmd.args.trim();
         if server.is_empty() {
-            return Ok(Some("Gebruik: !mc <server-adres> (bijv: !mc mc.hypixel.net)".into()));
+            return Ok(Some(ctx.locale.t("minecraft_usage").into()));
         }
 
         let clean_address = server.replace("http://", "").replace("https://", "").replace('/', "");
@@ -67,17 +67,20 @@ impl Plugin for MinecraftPlugin {
 
         if !resp.status().is_success() {
             return Ok(Some(format!(
-                "🎮 Kon serverstatus voor '{}' niet opvragen (fout bij API).",
-                clean_address
+                "🎮 {}",
+                ctx.locale.tf("minecraft_error", &[("server", &clean_address)])
             )));
         }
 
         let data: McStatusResponse = resp.json().await?;
+        let mc_title = ctx.locale.t("minecraft_title");
 
         if !data.online {
             return Ok(Some(format!(
-                "🎮 [Minecraft] Server '{}' is OFFLINE 🔴",
-                clean_address
+                "🎮 [{}] {} is {}",
+                mc_title,
+                clean_address,
+                ctx.locale.t("minecraft_offline")
             )));
         }
 
@@ -88,7 +91,7 @@ impl Plugin for MinecraftPlugin {
         let version = data
             .version
             .and_then(|v| v.name_clean.or(v.name_raw))
-            .unwrap_or_else(|| "Onbekend".to_string());
+            .unwrap_or_else(|| ctx.locale.t("minecraft_unknown").to_string());
 
         let clean_motd = data
             .motd
@@ -111,9 +114,13 @@ impl Plugin for MinecraftPlugin {
             String::new()
         };
 
+        let online_label = ctx.locale.t("minecraft_online");
+        let players_label = ctx.locale.t("minecraft_players");
+        let version_label = ctx.locale.t("minecraft_version");
+
         Ok(Some(format!(
-            "🎮 [Minecraft] {} is ONLINE 🟢 | Spelers: {}/{} | Versie: {}{}",
-            host_display, players_online, players_max, version, motd_part
+            "🎮 [{}] {} is {} | {}: {}/{} | {}: {}{}",
+            mc_title, host_display, online_label, players_label, players_online, players_max, version_label, version, motd_part
         )))
     }
 }

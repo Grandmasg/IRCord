@@ -84,6 +84,9 @@ Many modern IRC networks (such as Libera.Chat, OFTC, or Ergo) require SASL authe
 Copy the example environment template:
 ```bash
 cp .env.example .env
+# Or with Dutch or German comments:
+# cp .env.nl.example .env
+# cp .env.de.example .env
 ```
 
 Open `.env` in your text editor and fill in your values:
@@ -114,10 +117,20 @@ FREETOKEN_API_KEY=
 ```
 
 ### Step 4.2: Configure `config.toml`
-Open `config.toml` and configure your general settings, channel pairings, and language:
+Copy the example configuration template:
+```bash
+cp config.example.toml config.toml
+# Or use the Dutch or German template:
+# cp config.example.nl.toml config.toml
+# cp config.example.de.toml config.toml
+```
+*(Tip: You can also point to a custom config file path at runtime via the `CONFIG_PATH` environment variable, e.g. `CONFIG_PATH=config.prod.toml`.)*
+
+Open `config.toml` and configure your general settings, command prefixes, channel pairings, and languages:
 ```toml
 [general]
-language = "en" # "en" (English) or "nl" (Dutch) for chat output labels
+language = "en" # Default chat output language: "en", "nl", "de", "fr", "es"
+command_prefixes = ["!", "."] # Recognized command prefixes (e.g. !help, .help)
 bot_owner_discord_id = 123456789012345678
 bot_owner_irc_nick = "Kuuke"
 http_port = 9090
@@ -136,6 +149,8 @@ sync_edits = true
 irc_channel = "#general"
 discord_channel_id = 123456789012345678
 discord_webhook_url = "https://discord.com/api/webhooks/..."
+# Optional channel-specific language (User '!lang' > Channel language > Global [general].language)
+# language = "en"
 
 [whatpulse]
 team_name = "Team de Apen"

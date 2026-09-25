@@ -53,19 +53,13 @@ impl Plugin for TimePlugin {
         cmd: &CommandEvent,
     ) -> Result<Option<String>, Box<dyn std::error::Error + Send + Sync>> {
         let location = cmd.args.trim();
-        let is_dutch = ctx.config.general.language == "nl";
 
         if location.is_empty() {
-            let usage = if is_dutch {
-                "Gebruik: !tijd <stad of land> (bijv: !tijd tokyo)"
-            } else {
-                "Usage: !time <city or country> (e.g. !time tokyo)"
-            };
-            return Ok(Some(usage.into()));
+            return Ok(Some(ctx.locale.t("time_usage").into()));
         }
 
-        // 1. Zoek locatie en bijbehorende tijdzone via Open-Meteo Geocoding API
-        if let Err(block_msg) = ctx.open_meteo_quota.check_and_increment() {
+        // 1. Check quota & fetch location and timezone via Open-Meteo Geocoding API
+        if let Err(block_msg) = ctx.open_meteo_quota.check_and_increment_for_lang(ctx.locale.language()) {
             return Ok(Some(block_msg));
         }
 
@@ -91,18 +85,18 @@ impl Plugin for TimePlugin {
             .send()
             .await?;
         if !geo_resp.status().is_success() {
-            return Ok(Some(format!("🕒 Kon locatie '{}' niet opzoeken.", location)));
+            return Ok(Some(ctx.locale.tf("time_not_found", &[("location", location)])));
         }
 
         let geo_data: GeoResult = geo_resp.json().await?;
         let loc = match geo_data.results.and_then(|r| r.into_iter().next()) {
             Some(l) => l,
-            None => return Ok(Some(format!("🕒 Geen locatie gevonden voor '{}'.", location))),
+            None => return Ok(Some(ctx.locale.tf("time_not_found", &[("location", location)]))),
         };
 
         let tz = match loc.timezone {
             Some(ref t) if !t.is_empty() => t.clone(),
-            _ => return Ok(Some(format!("🕒 Geen tijdzone bekend voor '{}'.", loc.name))),
+            _ => return Ok(Some(ctx.locale.tf("time_no_tz", &[("location", &loc.name)]))),
         };
 
         let country = loc.country.unwrap_or_default();
@@ -112,62 +106,82 @@ impl Plugin for TimePlugin {
             String::new()
         };
 
-        // 2. Probeer TimeAPI.io
+        let title_label = ctx.locale.t("time_title");
+        let hour_suffix = ctx.locale.t("time_hour_suffix");
+        let tz_label = ctx.locale.t("time_timezone");
+        let lang = ctx.locale.language();
+
+        // 2. Try TimeAPI.io
         let time_url = format!("https://timeapi.io/api/time/current/zone?timeZone={}", tz);
         if let Ok(resp) = ctx.http.get(&time_url).send().await {
             if resp.status().is_success() {
                 if let Ok(t_data) = resp.json::<TimeApiResponse>().await {
                     let time_str = t_data.time.unwrap_or_else(|| "??:??".to_string());
                     let date_str = t_data.date.unwrap_or_default();
-                    let day_str = translate_day(t_data.day_of_week.as_deref().unwrap_or(""));
+                    let day_str = translate_day(t_data.day_of_week.as_deref().unwrap_or(""), lang);
 
-                    let label = if is_dutch { "Tijd in" } else { "Time in" };
-                    let hour_suffix = if is_dutch { " uur" } else { "" };
                     return Ok(Some(format!(
                         "🕒 [{} {}{}] {}{} | {} {} ({})",
-                        label, loc.name, country_suffix, time_str, hour_suffix, day_str, date_str, tz
+                        title_label, loc.name, country_suffix, time_str, hour_suffix, day_str, date_str, tz
                     )));
                 }
             }
         }
 
-        // 3. Fallback naar WorldTimeAPI
+        // 3. Fallback to WorldTimeAPI
         let wt_url = format!("https://worldtimeapi.org/api/timezone/{}", tz);
         if let Ok(resp) = ctx.http.get(&wt_url).send().await {
             if resp.status().is_success() {
                 if let Ok(wt_data) = resp.json::<WorldTimeResponse>().await {
                     if let Some(dt) = wt_data.datetime {
-                        // dt is bijv: "2026-09-12T15:30:21.123456+09:00"
                         let time_part = dt.split('T').nth(1).and_then(|t| t.split('.').next()).unwrap_or("??:??");
                         let offset = wt_data.utc_offset.unwrap_or_default();
-                        let label = if is_dutch { "Tijd in" } else { "Time in" };
-                        let tz_label = if is_dutch { "Tijdzone" } else { "Timezone" };
                         return Ok(Some(format!(
                             "🕒 [{} {}{}] {} (UTC{}) | {}: {}",
-                            label, loc.name, country_suffix, time_part, offset, tz_label, tz
+                            title_label, loc.name, country_suffix, time_part, offset, tz_label, tz
                         )));
                     }
                 }
             }
         }
 
-        Ok(Some(format!(
-            "🕒 Locatie {}{} gevonden ({}), maar kon actuele tijd niet ophalen.",
-            loc.name, country_suffix, tz
-        )))
+        let loc_display = format!("{}{}", loc.name, country_suffix);
+        Ok(Some(ctx.locale.tf("time_fetch_err", &[("location", &loc_display)])))
     }
 }
 
-fn translate_day(day: &str) -> &'static str {
-    match day.to_lowercase().as_str() {
-        "monday" => "Maandag",
-        "tuesday" => "Dinsdag",
-        "wednesday" => "Woensdag",
-        "thursday" => "Donderdag",
-        "friday" => "Vrijdag",
-        "saturday" => "Zaterdag",
-        "sunday" => "Zondag",
-        _ => "",
+fn translate_day(day: &str, lang: &str) -> &'static str {
+    match lang {
+        "nl" => match day.to_lowercase().as_str() {
+            "monday" => "Maandag",
+            "tuesday" => "Dinsdag",
+            "wednesday" => "Woensdag",
+            "thursday" => "Donderdag",
+            "friday" => "Vrijdag",
+            "saturday" => "Zaterdag",
+            "sunday" => "Zondag",
+            _ => "",
+        },
+        "de" => match day.to_lowercase().as_str() {
+            "monday" => "Montag",
+            "tuesday" => "Dienstag",
+            "wednesday" => "Mittwoch",
+            "thursday" => "Donnerstag",
+            "friday" => "Freitag",
+            "saturday" => "Samstag",
+            "sunday" => "Sonntag",
+            _ => "",
+        },
+        _ => match day.to_lowercase().as_str() {
+            "monday" => "Monday",
+            "tuesday" => "Tuesday",
+            "wednesday" => "Wednesday",
+            "thursday" => "Thursday",
+            "friday" => "Friday",
+            "saturday" => "Saturday",
+            "sunday" => "Sunday",
+            _ => "",
+        },
     }
 }
 

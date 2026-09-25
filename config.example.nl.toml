@@ -1,0 +1,81 @@
+[general]
+# Standaard taal voor bot-berichten: "nl" (Nederlands), "en" (Engels), "de" (Duits), "fr" (Frans), "es" (Spaans)
+language = "nl"
+
+# Herkende commando-voorvoegsels in chat (bijv. !help, .help, ?help, $help)
+command_prefixes = ["!", "."]
+
+# Bot-eigenaar identifiers voor beschermde beheercommando's
+bot_owner_discord_id = 0
+bot_owner_irc_nick = "Kuuke"
+
+# Web dashboard / health-check HTTP-poort
+http_port = 9090
+
+# Pastebin drempel: antwoorden met meer regels dan dit worden via pastebin of in delen verstuurd
+pastebin_threshold_lines = 4
+
+# Beheerders logkanalen
+admin_channel_irc = "#bot-logs"
+admin_channel_discord_id = 0 # Optioneel: Discord channel-ID voor #bot-logs
+
+[bridge]
+# Anti-loop timeout in seconden om bericht-echo's tussen IRC en Discord te voorkomen
+loop_prevent_timeout_sec = 10
+
+# Capaciteit van het interne LRU-geheugen voor berichttracering en ontdubbeling
+lru_cache_capacity = 2000
+
+# Synchroniseer Discord-aanwezigheidsstatus (online/afwezig/niet storen) naar IRC
+sync_presence = true
+
+# Synchroniseer bewerkte en verwijderde Discord-berichten direct naar IRC
+sync_edits = true
+
+# Kanaalkoppelingen (Multi-channel matrix)
+# Definieer een [[channels]] blok per gekoppeld paar van IRC-kanaal en Discord-kanaal
+[[channels]]
+irc_channel = "#algemeen"
+discord_channel_id = 123456789012345678
+discord_webhook_url = "https://discord.com/api/webhooks/..."
+# Optionele kanaalspecifieke taal: overschrijft [general].language voor dit specifieke kanaal
+# (Persoonlijke voorkeur via '!lang' heeft altijd de hoogste prioriteit)
+# language = "nl"
+
+# [[channels]]
+# irc_channel = "#english"
+# discord_channel_id = 987654321098765432
+# discord_webhook_url = "https://discord.com/api/webhooks/..."
+# language = "en"
+
+# WhatPulse Instellingen ("Team de Apen")
+[whatpulse]
+team_name = "Team de Apen"
+# Officiële WhatPulse Web API v1 (zie https://whatpulse.org/help/api/web/intro)
+# Vereist WHATPULSE_API_KEY in .env
+# Of gebruik optioneel een custom team feed zoals "https://www.grandmasg.nl/WPNEW/api.php"
+api_url = "https://whatpulse.org/api/v1"
+poll_interval_seconds = 180
+cache_ttl_seconds = 300
+
+# Lokale AI / LLM Instellingen (OpenAI-compatibel eindpunt, bijv. FlashML, Ollama of LocalAI)
+[ai]
+base_url = "http://127.0.0.1:1919/v1"
+default_model = "default"
+max_tokens = 300
+temperature = 0.7
+sliding_window_size = 8
+hourly_token_budget = 50000
+
+# Moderatie & Flood Guard
+[moderation]
+irc_flood_delay_ms = 800
+irc_line_max_bytes = 380
+raid_threshold_joins_per_sec = 5
+raid_mute_duration_sec = 60
+
+# Open-Meteo Weer API Quota Governor (proactieve snelheidsbegrenzer vóór limietoverschrijding)
+[open_meteo]
+daily_limit = 9500     # Open-Meteo gratis limiet is 10.000 aanroepen/dag (veiligheidsstop op 9.500)
+hourly_limit = 4500    # Limiet is 5.000 aanroepen/uur (veiligheidsstop op 4.500)
+minutely_limit = 500   # Limiet is 600 aanroepen/minuut (veiligheidsstop op 500)

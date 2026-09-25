@@ -11,33 +11,150 @@ slap = ["slap"]
 tell = ["tell", "memo", "note"]
 roast = ["roast"]
 whatis = ["whatis", "def"]
+quote = ["quote", "q"]
+karma = ["karma"]
+afk = ["afk", "brb"]
+poll = ["poll"]
+remind = ["remind", "remindme"]
+birthday = ["birthday", "bday"]
+wiki = ["wiki"]
+google = ["google", "g", "search"]
+minecraft = ["minecraft", "mc", "mcserver"]
+whatpulse = ["whatpulse", "wp"]
+lang = ["lang", "language", "taal", "sprache"]
 
 [messages]
 weather_title = "Weather"
 weather_temp = "Temperature"
 weather_wind = "Wind"
-weather_usage = "Usage: !weather <city>"
+weather_usage = "Usage: !weather <city> (or !weather quota)"
 weather_not_found = "Location '{city}' not found."
+weather_quota_label = "Open-Meteo Quota"
+weather_minute = "Minute"
+weather_hour = "Hour"
+weather_today = "Today"
 
 time_title = "Time in"
 time_hour_suffix = ""
 time_timezone = "Timezone"
 time_usage = "Usage: !time <city or country>"
 time_not_found = "Location '{location}' not found."
+time_no_tz = "No timezone known for '{location}'."
+time_fetch_err = "Location '{location}' found, but could not retrieve current time."
 
 currency_crypto_title = "Crypto"
 currency_fx_title = "Currency"
 currency_rate = "Rate"
+currency_usage = "Usage: !currency <amount> <from> <to> (e.g. !currency 100 usd eur)"
+currency_not_found = "Exchange rate not found for {from} -> {to}."
+crypto_not_found = "No price data found for '{ticker}'. Try: !crypto btc or !crypto eth"
+crypto_error = "Could not fetch crypto price for '{ticker}'."
 
 ai_vision_title = "AI Vision"
 ai_translation_title = "AI Translation"
 web_translation_title = "Translation"
 ai_roast_title = "Roast"
 ai_def_title = "Definition"
+ai_usage = "Usage: !ai <question> | !ai models | !ai model <name>"
+ai_too_long = "Your question is too long (max 1200 characters)."
+ai_budget_exceeded = "The token budget for this hour has been reached. Please try again later."
+ai_tldr_web = "TL;DR Web"
+ai_tldr_chat = "TL;DR Summary"
+ai_topic_title = "Topic Suggestion"
+ai_catchup_title = "Catch-up"
+ai_vibe_title = "Channel Vibe"
+ai_no_history = "Not enough recent chat history recorded yet."
+ai_models_active = "Active: '{model}' | Available on server: [{list}]"
+ai_models_err = "Active model: '{model}' (could not fetch server model list)"
+ai_admin_only = "Only the bot owner or operators may change the AI model."
+ai_model_usage = "Usage: !ai model <name> (e.g. !ai model qwen2.5-coder)"
+ai_model_changed = "Active model changed to '{model}'"
+ai_url_blocked = "This URL is not permitted (internal or private addresses are blocked)."
+ai_url_failed = "Could not fetch the page at '{url}' for summary."
+ai_no_article_text = "Could not find readable article text on the page to summarize."
+ai_whatis_usage = "Usage: !whatis <term> (e.g. !whatis BGP or !whatis Docker)"
+
 
 urban_title = "Urban"
+urban_usage = "Usage: !ud <term>"
+urban_not_found = "No definition found on Urban Dictionary for '{term}'."
+urban_example_prefix = "Ex:"
+
 minecraft_title = "Minecraft"
 minecraft_online = "ONLINE 🟢"
 minecraft_offline = "OFFLINE 🔴"
 minecraft_players = "Players"
 minecraft_version = "Version"
+minecraft_usage = "Usage: !mc <server-address> (e.g. !mc mc.hypixel.net)"
+minecraft_unknown = "Unknown"
+minecraft_error = "Could not fetch server status for '{server}'."
+
+tell_usage = "Usage: !tell <user> <message>"
+tell_self = "You cannot leave a memo for yourself."
+tell_saved = "Memo for '{recipient}' saved. I will deliver it once they are active!"
+tell_received_header = "Hello {author}, you have pending memos:"
+tell_received_item = "[Memo from {sender} ({time})]: {message}"
+
+remind_usage = "Usage: !remindme <number><m/h/d> <message> (e.g. !remindme 20m pizza)"
+remind_invalid_time = "Invalid duration. Use e.g. 10m, 2h, or 1d."
+remind_saved = "{author}, your reminder for '{message}' has been set (in {count} {unit})!"
+remind_unit_minute = "minute(s)"
+remind_unit_hour = "hour(s)"
+remind_unit_day = "day(s)"
+
+quote_usage = "Usage: !quote add <text> | !quote [term] | !quote random"
+quote_saved = "Quote successfully stored in the database!"
+quote_not_found = "No quotes found matching your query."
+
+karma_self = "{author}, you cannot adjust your own karma!"
+karma_score = "[Karma] {target} has a score of {score}"
+karma_new_score = "[Karma] {target} now has a score of {score}"
+
+afk_default_reason = "away for a bit"
+afk_set = "{author} is now AFK: {reason}"
+afk_welcome_back = "Welcome back {author}, you were AFK for {mins} minutes."
+afk_mention = "[{user}] is AFK since {mins} minutes ago (Reason: {reason})"
+
+poll_usage = "Usage: !poll start \"Question?\" option1/option2"
+poll_need_quotes = "Enclose the question in double quotes: !poll start \"Question?\" option1/option2"
+poll_min_options = "A poll requires at least 2 options separated by a slash (/): option1/option2"
+poll_vote_usage = "Specify a valid option number: !poll vote 1"
+poll_vote_invalid = "Invalid choice. Choose between 1 and {max}."
+poll_voted = "Vote recorded for option [{choice}]: '{option}'."
+poll_ended = "Poll #{id} ended. Winning option: '{winner}' with {votes} votes!"
+poll_none_active = "No active poll in this channel."
+
+birthday_usage = "Invalid date format. Use: !bday set DD-MM (e.g. !bday set 24-09) or with year (e.g. !bday set 24-09-1995)"
+birthday_saved = "[Birthday] Saved for {author}! Your birthday is set to {date} ({relative}). I'll celebrate you in {channel}!"
+birthday_deleted = "[Birthday] Birthday successfully removed for {author}."
+birthday_not_registered = "You don't have a birthday registered yet."
+birthday_none_registered = "No birthdays registered in the database yet."
+birthday_upcoming_header = "[Upcoming Birthdays]"
+birthday_celebration_age = "🎂 🎉 🎈 Happy Birthday, {name}! Turning {age} today! Have a wonderful day! 🥳 🍰"
+birthday_celebration = "🎂 🎉 🎈 Happy Birthday, {name}! Wishing you a wonderful and festive day! 🥳 🍰"
+
+google_usage = "Usage: !g <query>"
+google_not_found = "No search results found for: \"{query}\""
+
+wiki_usage = "Usage: !wiki [lang] <term>"
+wiki_not_found = "No Wikipedia article found for '{term}'."
+
+youtube_usage = "Usage: !yt <search_term>"
+youtube_desc_prefix = "Description:"
+youtube_by = "by"
+youtube_unknown = "Unknown"
+
+whatpulse_no_top = "No WhatPulse top members available in the feed."
+whatpulse_link_usage = "Usage: !wp link <whatpulse_username>"
+whatpulse_linked = "{author} is now linked to WhatPulse profile '{username}'!"
+whatpulse_not_linked = "You haven't linked your WhatPulse profile yet. Use: !wp link <whatpulse_username>"
+whatpulse_user_usage = "Usage: !wp user <whatpulse_username>"
+whatpulse_team_stats = "[{name}] Global Rank: #{rank} | Members: {members} | Keys: {keys} | Clicks: {clicks} | Download: {download} MB"
+whatpulse_api_key_tip = "To look up live user stats for '{target}', configure WHATPULSE_API_KEY in .env (free at https://whatpulse.org/settings/api)."
+
+link_title = "Link Title"
+lang_title = "Language"
+lang_current = "🌐 [{title}] Your current language is '{lang}' (default: '{default}'). Available languages: {available}. Change with: !lang <code|name> (e.g. !lang nl or !lang en)."
+lang_set_success = "✅ [{title}] Your language preference has been set to '{lang}'!"
+lang_unknown = "⚠️ [{title}] Unknown language '{input}'. Available languages: {available}."
+lang_reset = "🔄 [{title}] Your language preference has been reset to the server default ('{default}')."

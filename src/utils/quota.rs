@@ -13,7 +13,7 @@ pub struct QuotaStatus {
     pub daily_limit: u64,
 }
 
-/// Thread-safe API Quota Governor om rate-limits en API-kosten proactief te blokkeren
+/// Thread-safe API Quota Governor to proactively prevent rate-limits and unexpected API fees
 pub struct ApiQuotaGovernor {
     pub name: String,
     limit_minutely: u64,
@@ -44,13 +44,17 @@ impl ApiQuotaGovernor {
         }
     }
 
-    /// Controleert of een API-aanroep toegestaan is.
-    /// Als een limiet bereikt dreigt te worden, wordt het verzoek GEBLOKKEERD
-    /// en ontvang je een duidelijke foutmelding.
+    /// Checks whether an API call is permitted using the default English locale.
     pub fn check_and_increment(&self) -> Result<QuotaStatus, String> {
+        self.check_and_increment_for_lang("en")
+    }
+
+    /// Checks whether an API call is permitted, returning localized error messages.
+    /// If a limit is about to be exceeded, the request is BLOCKED proactively.
+    pub fn check_and_increment_for_lang(&self, lang: &str) -> Result<QuotaStatus, String> {
         let now = Instant::now();
 
-        // 1. Controleer minuut-venster (60s)
+        // 1. Check 60-second window
         {
             let mut w = self.window_minute.write().unwrap();
             if w.elapsed() >= Duration::from_secs(60) {
@@ -59,7 +63,7 @@ impl ApiQuotaGovernor {
             }
         }
 
-        // 2. Controleer uur-venster (3600s)
+        // 2. Check 3600-second window
         {
             let mut w = self.window_hour.write().unwrap();
             if w.elapsed() >= Duration::from_secs(3600) {
@@ -68,7 +72,7 @@ impl ApiQuotaGovernor {
             }
         }
 
-        // 3. Controleer dag-venster (86400s)
+        // 3. Check 86400-second window
         {
             let mut w = self.window_day.write().unwrap();
             if w.elapsed() >= Duration::from_secs(86400) {
@@ -82,30 +86,54 @@ impl ApiQuotaGovernor {
         let d = self.count_daily.load(Ordering::Relaxed);
 
         if self.limit_minutely > 0 && m >= self.limit_minutely {
-            warn!("[{}] Minuutlimiet bereikt: {}/{}", self.name, m, self.limit_minutely);
-            return Err(format!(
-                "⚠️ [{}] Minuutlimiet bereikt ({}/{} calls/min). Aanvraag tijdelijk geblokkeerd om rate-limits te voorkomen.",
-                self.name, m, self.limit_minutely
-            ));
+            warn!("[{}] Minutely limit reached: {}/{}", self.name, m, self.limit_minutely);
+            let msg = if lang == "nl" {
+                format!(
+                    "⚠️ [{}] Minuutlimiet bereikt ({}/{} calls/min). Aanvraag tijdelijk geblokkeerd om rate-limits te voorkomen.",
+                    self.name, m, self.limit_minutely
+                )
+            } else {
+                format!(
+                    "⚠️ [{}] Minutely limit reached ({}/{} calls/min). Request temporarily blocked to prevent rate-limits.",
+                    self.name, m, self.limit_minutely
+                )
+            };
+            return Err(msg);
         }
 
         if self.limit_hourly > 0 && h >= self.limit_hourly {
-            warn!("[{}] Uurlimiet bereikt: {}/{}", self.name, h, self.limit_hourly);
-            return Err(format!(
-                "⚠️ [{}] Uurlimiet bereikt ({}/{} calls/uur). Aanvraag geblokkeerd om rate-limits te voorkomen.",
-                self.name, h, self.limit_hourly
-            ));
+            warn!("[{}] Hourly limit reached: {}/{}", self.name, h, self.limit_hourly);
+            let msg = if lang == "nl" {
+                format!(
+                    "⚠️ [{}] Uurlimiet bereikt ({}/{} calls/uur). Aanvraag geblokkeerd om rate-limits te voorkomen.",
+                    self.name, h, self.limit_hourly
+                )
+            } else {
+                format!(
+                    "⚠️ [{}] Hourly limit reached ({}/{} calls/hour). Request blocked to prevent rate-limits.",
+                    self.name, h, self.limit_hourly
+                )
+            };
+            return Err(msg);
         }
 
         if self.limit_daily > 0 && d >= self.limit_daily {
-            warn!("[{}] Daglimiet bereikt: {}/{}", self.name, d, self.limit_daily);
-            return Err(format!(
-                "⚠️ [{}] Daglimiet bereikt ({}/{} calls/dag). Aanvraag geblokkeerd om kosten en blokkades te voorkomen.",
-                self.name, d, self.limit_daily
-            ));
+            warn!("[{}] Daily limit reached: {}/{}", self.name, d, self.limit_daily);
+            let msg = if lang == "nl" {
+                format!(
+                    "⚠️ [{}] Daglimiet bereikt ({}/{} calls/dag). Aanvraag geblokkeerd om kosten en blokkades te voorkomen.",
+                    self.name, d, self.limit_daily
+                )
+            } else {
+                format!(
+                    "⚠️ [{}] Daily limit reached ({}/{} calls/day). Request blocked to prevent rate-limits.",
+                    self.name, d, self.limit_daily
+                )
+            };
+            return Err(msg);
         }
 
-        // Verhoog tellers
+        // Increment counters
         let new_m = self.count_minutely.fetch_add(1, Ordering::Relaxed) + 1;
         let new_h = self.count_hourly.fetch_add(1, Ordering::Relaxed) + 1;
         let new_d = self.count_daily.fetch_add(1, Ordering::Relaxed) + 1;
@@ -165,10 +193,14 @@ mod tests {
         let gov = ApiQuotaGovernor::new("TestAPI", 2, 5, 10);
         assert!(gov.check_and_increment().is_ok());
         assert!(gov.check_and_increment().is_ok());
-        // Derde aanroep binnen dezelfde minuut moet geblokkeerd worden
-        let res = gov.check_and_increment();
-        assert!(res.is_err());
-        assert!(res.unwrap_err().contains("Minuutlimiet bereikt"));
+        // Third call in the same minute should be blocked
+        let res_en = gov.check_and_increment();
+        assert!(res_en.is_err());
+        assert!(res_en.unwrap_err().contains("Minutely limit reached"));
+
+        let res_nl = gov.check_and_increment_for_lang("nl");
+        assert!(res_nl.is_err());
+        assert!(res_nl.unwrap_err().contains("Minuutlimiet bereikt"));
     }
 
     #[test]

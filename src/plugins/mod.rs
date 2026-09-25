@@ -29,6 +29,7 @@ pub mod sysadmin;
 pub mod rss;
 pub mod tech;
 pub mod rhai;
+pub mod lang;
 
 use async_trait::async_trait;
 use reqwest::Client;
@@ -123,9 +124,8 @@ impl PluginManager {
         let mut responses = Vec::new();
         let trimmed = msg.content.trim();
 
-        // 1. Is het een commando? (!trigger of .trigger)
-        if trimmed.starts_with('!') || trimmed.starts_with('.') {
-            let clean = &trimmed[1..];
+        // 1. Is it a command? (Configured command prefixes e.g. ! or .)
+        if let Some(clean) = self.ctx.config.general.strip_command_prefix(trimmed) {
             let mut parts = clean.splitn(2, ' ');
             let raw_trigger = parts.next().unwrap_or("").to_lowercase();
             let canonical_trigger = self.ctx.locale.resolve_alias(&raw_trigger).to_string();
@@ -145,7 +145,17 @@ impl PluginManager {
 
             for p in &self.plugins {
                 if p.triggers().contains(&canonical_trigger.as_str()) || p.triggers().contains(&raw_trigger.as_str()) {
-                    let ctx = self.ctx.clone();
+                    let mut ctx = self.ctx.clone();
+                    // Language precedence: 1. User preference -> 2. Channel language -> 3. Global default
+                    let effective_lang = if let Some(pref) = self.ctx.locale.get_user_preference(&msg.platform, &msg.author) {
+                        pref
+                    } else {
+                        self.ctx.config.channel_language(&msg.platform, &msg.channel).to_string()
+                    };
+
+                    if effective_lang != ctx.locale.language() {
+                        ctx.locale = Arc::new(self.ctx.locale.for_language(&effective_lang));
+                    }
                     let cmd_clone = cmd.clone();
                     let plugin_name = p.name();
 

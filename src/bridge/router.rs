@@ -7,7 +7,6 @@ use std::hash::{Hash, Hasher};
 use std::num::NonZeroUsize;
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
-use tracing::debug;
 
 #[derive(Debug, Clone)]
 pub struct IrcMessageRef {
@@ -19,6 +18,7 @@ pub struct IrcMessageRef {
 
 pub struct BridgeRouter {
     mappings: Vec<ChannelMapping>,
+    command_prefixes: Vec<String>,
     // 1. Discord Message ID -> IRC Context & Auteur
     discord_to_irc: Mutex<LruCache<String, IrcMessageRef>>,
     // 2. IRC Context Hash -> Discord Message ID
@@ -27,9 +27,14 @@ pub struct BridgeRouter {
 
 impl BridgeRouter {
     pub fn new(mappings: Vec<ChannelMapping>, lru_capacity: usize) -> Self {
+        Self::with_prefixes(mappings, lru_capacity, vec!["!".to_string(), ".".to_string()])
+    }
+
+    pub fn with_prefixes(mappings: Vec<ChannelMapping>, lru_capacity: usize, prefixes: Vec<String>) -> Self {
         let cap = NonZeroUsize::new(lru_capacity.max(2000)).unwrap();
         Self {
             mappings,
+            command_prefixes: prefixes,
             discord_to_irc: Mutex::new(LruCache::new(cap)),
             irc_to_discord: Mutex::new(LruCache::new(cap)),
         }
@@ -99,10 +104,15 @@ impl BridgeRouter {
         self.mappings.iter().find(|m| m.discord_channel_id == discord_channel_id)
     }
 
-    /// Bepaalt of een bericht genegeerd moet worden ter voorkoming van bridge-loops of commando-conflicten
+    /// Determines if a message should be ignored to avoid bridge loops or command conflicts
     pub fn should_ignore(&self, content: &str) -> bool {
         let trimmed = content.trim();
-        if trimmed.starts_with('!') || trimmed.starts_with('.') || trimmed.starts_with('~') || trimmed.starts_with('/') {
+        for prefix in &self.command_prefixes {
+            if trimmed.starts_with(prefix) {
+                return true;
+            }
+        }
+        if trimmed.starts_with('~') || trimmed.starts_with('/') {
             return true;
         }
         false
@@ -141,6 +151,7 @@ mod tests {
             irc_channel: "#test".into(),
             discord_channel_id: 123,
             discord_webhook_url: "https://discord.com/...".into(),
+            language: None,
         }];
         let router = BridgeRouter::new(mappings, 100);
 

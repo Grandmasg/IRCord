@@ -17,10 +17,10 @@ impl Plugin for QuotesPlugin {
 
         if first == "add" {
             if rest.is_empty() {
-                return Ok(Some("Gebruik: !quote add <de memorabele uitspraak>".into()));
+                return Ok(Some(ctx.locale.t("quote_usage").into()));
             }
 
-            // Sla op in audit_log of aparte quote tabel
+            // Save to audit_log
             sqlx::query!(
                 r#"
                 INSERT INTO audit_log (operator, platform, action, details)
@@ -33,10 +33,10 @@ impl Plugin for QuotesPlugin {
             .execute(&ctx.db)
             .await?;
 
-            return Ok(Some("📜 Citaat succesvol opgeslagen in de database!".into()));
+            return Ok(Some(format!("📜 {}", ctx.locale.t("quote_saved"))));
         }
 
-        // Zoek een willekeurige quote of op trefwoord
+        // Search for a random quote or by keyword
         let row: Option<(i64, String, Option<String>)> = if first.is_empty() || first == "random" {
             sqlx::query_as(
                 r#"
@@ -66,12 +66,13 @@ impl Plugin for QuotesPlugin {
         };
 
         if let Some((id, operator, details)) = row {
+            let added_by = if ctx.locale.is_dutch() { "toegevoegd door" } else { "added by" };
             Ok(Some(format!(
-                "💬 [Quote #{}] \"{}\" (toegevoegd door {})",
-                id, details.unwrap_or_default(), operator
+                "💬 [Quote #{}] \"{}\" ({} {})",
+                id, details.unwrap_or_default(), added_by, operator
             )))
         } else {
-            Ok(Some("Geen citaten gevonden die aan de zoekopdracht voldoen.".into()))
+            Ok(Some(ctx.locale.t("quote_not_found").into()))
         }
     }
 }

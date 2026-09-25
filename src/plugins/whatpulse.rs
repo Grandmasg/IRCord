@@ -294,10 +294,7 @@ impl WhatPulsePlugin {
             }
         }
 
-        Ok(Some(format!(
-            "ℹ️ Om live gebruikersstatistieken voor '{}' op te vragen, vul WHATPULSE_API_KEY in je .env in (gratis aan te maken op https://whatpulse.org/settings/api).",
-            target
-        )))
+        Ok(Some(ctx.locale.tf("whatpulse_api_key_tip", &[("target", target)])))
     }
 
     fn format_number(val: u64) -> String {
@@ -319,7 +316,7 @@ impl WhatPulsePlugin {
 impl Plugin for WhatPulsePlugin {
     fn name(&self) -> &'static str { "whatpulse" }
     fn triggers(&self) -> &[&'static str] { &["wp", "whatpulse"] }
-    fn help(&self) -> &'static str { "!wp - Teamstatistieken | !wp <gebruiker> / !wp me | !wp top | !wp link <user>" }
+    fn help(&self) -> &'static str { "!wp - Team stats | !wp <user> / !wp me | !wp top | !wp link <user>" }
 
     async fn on_command(&self, ctx: &PluginContext, cmd: &CommandEvent) -> Result<Option<String>, Box<dyn std::error::Error + Send + Sync>> {
         let args = cmd.args.trim();
@@ -330,7 +327,7 @@ impl Plugin for WhatPulsePlugin {
             "top" => {
                 let data = self.fetch_stats(ctx).await?;
                 if data.top_members.is_empty() {
-                    return Ok(Some("Geen WhatPulse topleden beschikbaar in de feed.".into()));
+                    return Ok(Some(ctx.locale.t("whatpulse_no_top").into()));
                 }
                 let mut lines = Vec::new();
                 for (idx, member) in data.top_members.iter().take(5).enumerate() {
@@ -342,12 +339,12 @@ impl Plugin for WhatPulsePlugin {
                         Self::format_number(member.clicks)
                     ));
                 }
-                Ok(Some(format!("🏆 [WhatPulse Top - Team de Apen] {}", lines.join(" | "))))
+                Ok(Some(format!("🏆 [WhatPulse Top - {}] {}", ctx.config.whatpulse.team_name, lines.join(" | "))))
             }
             "link" => {
                 let target = parts.next().unwrap_or("");
                 if target.is_empty() {
-                    return Ok(Some("Gebruik: !wp link <jouw_whatpulse_username>".into()));
+                    return Ok(Some(ctx.locale.t("whatpulse_link_usage").into()));
                 }
                 sqlx::query!(
                     r#"
@@ -362,7 +359,10 @@ impl Plugin for WhatPulsePlugin {
                 .execute(&ctx.db)
                 .await?;
 
-                Ok(Some(format!("✅ {} is nu gekoppeld aan WhatPulse profiel '{}'!", cmd.author, target)))
+                Ok(Some(ctx.locale.tf(
+                    "whatpulse_linked",
+                    &[("author", &cmd.author), ("username", target)],
+                )))
             }
             "me" => {
                 let row = sqlx::query!(
@@ -376,23 +376,21 @@ impl Plugin for WhatPulsePlugin {
                 if let Some(r) = row {
                     self.fetch_user_stats(ctx, &r.whatpulse_username).await
                 } else {
-                    Ok(Some(format!(
-                        "ℹ️ Je hebt je WhatPulse profiel nog niet gekoppeld. Gebruik: !wp link <jouw_whatpulse_username>"
-                    )))
+                    Ok(Some(ctx.locale.t("whatpulse_not_linked").into()))
                 }
             }
             "user" => {
                 let target = parts.next().unwrap_or("");
                 if target.is_empty() {
-                    return Ok(Some("Gebruik: !wp user <whatpulse_username>".into()));
+                    return Ok(Some(ctx.locale.t("whatpulse_user_usage").into()));
                 }
                 self.fetch_user_stats(ctx, target).await
             }
             "" => {
-                // Algemene team statistieken
+                // General team stats
                 let data = self.fetch_stats(ctx).await?;
                 let team = data.team.unwrap_or(WpTeamStats {
-                    name: "Team de Apen".into(),
+                    name: ctx.config.whatpulse.team_name.clone(),
                     rank: 0,
                     members: 0,
                     keys: 0,
@@ -401,18 +399,27 @@ impl Plugin for WhatPulsePlugin {
                     upload_mb: 0,
                 });
 
-                Ok(Some(format!(
-                    "⌨️ [{}] Wereldwijde Rank: #{} | Leden: {} | Keys: {} | Clicks: {} | Download: {} MB",
-                    team.name,
-                    team.rank,
-                    team.members,
-                    Self::format_number(team.keys),
-                    Self::format_number(team.clicks),
-                    Self::format_number(team.download_mb)
-                )))
+                let rank_str = team.rank.to_string();
+                let members_str = team.members.to_string();
+                let keys_str = Self::format_number(team.keys);
+                let clicks_str = Self::format_number(team.clicks);
+                let dl_str = Self::format_number(team.download_mb);
+
+                let stats = ctx.locale.tf(
+                    "whatpulse_team_stats",
+                    &[
+                        ("name", &team.name),
+                        ("rank", &rank_str),
+                        ("members", &members_str),
+                        ("keys", &keys_str),
+                        ("clicks", &clicks_str),
+                        ("download", &dl_str),
+                    ],
+                );
+
+                Ok(Some(stats))
             }
             other => {
-                // Als iemand typt bijv: !wp Grandmasg
                 self.fetch_user_stats(ctx, other).await
             }
         }

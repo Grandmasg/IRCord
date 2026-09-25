@@ -6,7 +6,7 @@ use tracing::info;
 pub struct AiPlugin;
 
 impl AiPlugin {
-    /// Hulpfunctie om AI antwoorden voor IRC op te knippen in logische zinsgrenzen
+    /// Helper function to split AI responses for IRC on logical sentence boundaries
     fn format_for_irc(text: &str) -> Vec<String> {
         let mut lines = Vec::new();
         for raw_line in text.lines() {
@@ -17,7 +17,7 @@ impl AiPlugin {
             if trimmed.len() <= 350 {
                 lines.push(trimmed.to_string());
             } else {
-                // Splits op zinsgrenzen
+                // Split on sentence boundaries
                 let mut current = String::new();
                 for sentence in trimmed.split_inclusive(&['.', '!', '?'][..]) {
                     if current.len() + sentence.len() > 350 {
@@ -42,7 +42,7 @@ impl Plugin for AiPlugin {
     fn name(&self) -> &'static str { "ai" }
     fn triggers(&self) -> &[&'static str] { &["ai", "tldr", "summary", "topic", "roast", "whatis", "def", "catchup", "digest", "vibe", "sentiment"] }
     fn help(&self) -> &'static str {
-        "!ai <vraag> | !catchup [aantal] | !vibe | !tldr [url] | !topic suggest | !roast <nick> | !whatis <begrip>"
+        "!ai <question> | !catchup [count] | !vibe | !tldr [url] | !topic | !roast <nick> | !whatis <term>"
     }
 
     async fn on_command(&self, ctx: &PluginContext, cmd: &CommandEvent) -> Result<Option<String>, Box<dyn std::error::Error + Send + Sync>> {
@@ -51,45 +51,49 @@ impl Plugin for AiPlugin {
         match cmd.trigger.as_str() {
             "ai" => {
                 if args.is_empty() {
-                    return Ok(Some("Gebruik: !ai <jouw vraag> | !ai models | !ai model <naam> (admin)".into()));
+                    return Ok(Some(ctx.locale.t("ai_usage").to_string()));
                 }
 
-                // 1. Model inspectie: !ai models of !ai model
+                // 1. Model inspection: !ai models or !ai model
                 if args.eq_ignore_ascii_case("models") || args.eq_ignore_ascii_case("model") {
                     let current = ctx.ai_manager.get_model();
                     return match ctx.ai_client.list_models().await {
                         Ok(list) if !list.is_empty() => {
-                            Ok(Some(format!("🧠 [AI Modellen] Actief: '{}' | Beschikbaar op server: [{}]", current, list.join(", "))))
+                            let msg = ctx.locale.tf("ai_models_active", &[("model", &current), ("list", &list.join(", "))]);
+                            Ok(Some(format!("🧠 [AI] {}", msg)))
                         }
-                        _ => Ok(Some(format!("🧠 [AI Modellen] Actief model: '{}' (kon server-modellenlijst niet ophalen)", current))),
+                        _ => {
+                            let msg = ctx.locale.tf("ai_models_err", &[("model", &current)]);
+                            Ok(Some(format!("🧠 [AI] {}", msg)))
+                        }
                     };
                 }
 
-                // 2. Model wisselen (strikte Admin/Operator autorisatie): !ai model <nieuw_model>
+                // 2. Model switch (strict Admin/Operator authorization): !ai model <new_model>
                 if args.to_lowercase().starts_with("model ") {
                     if !cmd.is_owner && !cmd.is_operator {
-                        return Ok(Some("⛔ Alleen de bot eigenaar of operators mogen het AI model wijzigen.".into()));
+                        return Ok(Some(format!("⛔ {}", ctx.locale.t("ai_admin_only"))));
                     }
 
                     let new_model = args[6..].trim();
                     if new_model.is_empty() {
-                        return Ok(Some("Gebruik: !ai model <naam> (bijv: !ai model qwen2.5-coder)".into()));
+                        return Ok(Some(ctx.locale.t("ai_model_usage").to_string()));
                     }
 
                     ctx.ai_manager.set_model(new_model.to_string());
-                    return Ok(Some(format!("✅ [AI Model] Actief model gewijzigd naar '{}'", new_model)));
+                    return Ok(Some(format!("✅ {}", ctx.locale.tf("ai_model_changed", &[("model", new_model)]))));
                 }
 
-                // 3. Reguliere AI prompt
+                // 3. Regular AI prompt
                 if args.len() > 1200 {
-                    return Ok(Some("⚠️ Je vraag is te lang (maximaal 1200 tekens toegestaan).".into()));
+                    return Ok(Some(format!("⚠️ {}", ctx.locale.t("ai_too_long"))));
                 }
 
                 if !ctx.ai_manager.can_consume(300) {
-                    return Ok(Some("⚠️ Het tokenbudget voor dit uur is bereikt. Probeer het later nog eens.".into()));
+                    return Ok(Some(format!("⚠️ {}", ctx.locale.t("ai_budget_exceeded"))));
                 }
 
-                info!("Aanroepen FreeToken model voor {} op kanaal {}", cmd.author, cmd.channel);
+                info!("Calling FreeToken model for {} on channel {}", cmd.author, cmd.channel);
                 let current_model = ctx.ai_manager.get_model();
                 let answer = ctx.ai_client.ask(&cmd.author, args, Some(&current_model)).await?;
                 ctx.ai_manager.record_consumption(150);
@@ -108,13 +112,13 @@ impl Plugin for AiPlugin {
             }
 
             "tldr" | "summary" => {
-                // A. Webpagina URL samenvatting: !tldr https://...
+                // A. Webpage URL summary: !tldr https://...
                 if args.starts_with("http://") || args.starts_with("https://") {
                     let url = args.split_whitespace().next().unwrap_or(args);
 
-                    // SSRF-beveiliging tegen interne netwerkadressen
+                    // SSRF protection against internal network addresses
                     if !crate::plugins::url_titler::UrlTitlerPlugin::is_safe_public_url(url) {
-                        return Ok(Some("⛔ Deze URL is niet toegestaan (interne en beveiligde adressen worden geblokkeerd).".into()));
+                        return Ok(Some(format!("⛔ {}", ctx.locale.t("ai_url_blocked"))));
                     }
 
                     let resp = match ctx.http.get(url)
@@ -124,7 +128,7 @@ impl Plugin for AiPlugin {
                         .await
                     {
                         Ok(r) if r.status().is_success() => r,
-                        _ => return Ok(Some(format!("📝 Kon de pagina op '{}' niet ophalen voor een samenvatting.", url))),
+                        _ => return Ok(Some(format!("📝 {}", ctx.locale.tf("ai_url_failed", &[("url", url)])))),
                     };
 
                     let body = resp.text().await.unwrap_or_default();
@@ -144,88 +148,138 @@ impl Plugin for AiPlugin {
                     };
 
                     if extracted_text.trim().is_empty() {
-                        return Ok(Some("📝 Kon geen leesbare artikeltekst vinden op de pagina om samen te vatten.".into()));
+                        return Ok(Some(format!("📝 {}", ctx.locale.t("ai_no_article_text"))));
                     }
 
-                    let prompt = format!(
-                        "Vat de volgende artikeltekst beknopt samen in 2 feitelijke, to-the-point zinnen (maximaal 250 tekens in totaal):\n{}",
-                        extracted_text.chars().take(2000).collect::<String>()
-                    );
+                    let prompt = match ctx.locale.language() {
+                        "nl" => format!(
+                            "Vat de volgende artikeltekst beknopt samen in 2 feitelijke, to-the-point zinnen (maximaal 250 tekens in totaal):\n{}",
+                            extracted_text.chars().take(2000).collect::<String>()
+                        ),
+                        "de" => format!(
+                            "Fasse den folgenden Artikeltext prägnant in 2 sachlichen Sätzen zusammen (maximal 250 Zeichen insgesamt):\n{}",
+                            extracted_text.chars().take(2000).collect::<String>()
+                        ),
+                        _ => format!(
+                            "Summarize the following article text concisely in 2 factual, to-the-point sentences (maximum 250 characters in total):\n{}",
+                            extracted_text.chars().take(2000).collect::<String>()
+                        ),
+                    };
 
                     let current_model = ctx.ai_manager.get_model();
                     let summary = ctx.ai_client.ask(&cmd.author, &prompt, Some(&current_model)).await?;
                     let clean = summary.replace('\n', " • ");
 
-                    return Ok(Some(format!("📝 [TL;DR Web]: {}", clean)));
+                    return Ok(Some(format!("📝 [{}]: {}", ctx.locale.t("ai_tldr_web"), clean)));
                 }
 
-                // B. Kanaalgeschiedenis RAG samenvatting
+                // B. Channel history RAG summary
                 let recent_logs = ctx.rag.search_history(&cmd.channel, 20).await?;
                 if recent_logs.is_empty() {
-                    return Ok(Some("Er zijn nog niet genoeg recente chatberichten gelogd voor een samenvatting.".into()));
+                    return Ok(Some(ctx.locale.t("ai_no_history").to_string()));
                 }
 
                 let context_text = recent_logs.join("\n");
-                let prompt = format!(
-                    "Vat de volgende recente chatgesprekken samen in 3 zeer korte, to-the-point bullet points:\n{}",
-                    context_text
-                );
+                let prompt = match ctx.locale.language() {
+                    "nl" => format!(
+                        "Vat de volgende recente chatgesprekken samen in 3 zeer korte, to-the-point bullet points:\n{}",
+                        context_text
+                    ),
+                    "de" => format!(
+                        "Fasse die folgenden aktuellen Chat-Gespräche in 3 sehr kurzen, prägnanten Stichpunkten zusammen:\n{}",
+                        context_text
+                    ),
+                    _ => format!(
+                        "Summarize the following recent chat conversations in 3 very short, to-the-point bullet points:\n{}",
+                        context_text
+                    ),
+                };
 
                 let current_model = ctx.ai_manager.get_model();
                 let summary = ctx.ai_client.ask(&cmd.author, &prompt, Some(&current_model)).await?;
 
                 if cmd.platform == "irc" {
                     let clean = summary.replace('\n', " • ");
-                    Ok(Some(format!("📝 [TL;DR]: {}", clean)))
+                    Ok(Some(format!("📝 [{}]: {}", ctx.locale.t("ai_tldr_chat"), clean)))
                 } else {
-                    Ok(Some(format!("📝 **[TL;DR Samenvatting]**:\n{}", summary)))
+                    Ok(Some(format!("📝 **[{}]**:\n{}", ctx.locale.t("ai_tldr_chat"), summary)))
                 }
             }
 
             "topic" => {
                 let recent_logs = ctx.rag.search_history(&cmd.channel, 15).await?;
                 let context_text = recent_logs.join("\n");
-                let prompt = format!(
-                    "Bedenk op basis van deze recente chat een spitsvondig, kort en relevant kanaaltopic (max 1 regel):\n{}",
-                    context_text
-                );
+                let prompt = match ctx.locale.language() {
+                    "nl" => format!(
+                        "Bedenk op basis van deze recente chat een spitsvondig, kort en relevant kanaaltopic (max 1 regel):\n{}",
+                        context_text
+                    ),
+                    "de" => format!(
+                        "Erstelle basierend auf diesem aktuellen Chat ein witziges, kurzes und relevantes Kanalthema (max. 1 Zeile):\n{}",
+                        context_text
+                    ),
+                    _ => format!(
+                        "Based on this recent chat, suggest a witty, concise, and relevant channel topic (max 1 line):\n{}",
+                        context_text
+                    ),
+                };
 
                 let current_model = ctx.ai_manager.get_model();
                 let topic_suggestion = ctx.ai_client.ask(&cmd.author, &prompt, Some(&current_model)).await?;
 
-                Ok(Some(format!("💡 [Topic Suggestie]: {}", topic_suggestion.replace('\n', " "))))
+                Ok(Some(format!("💡 [{}]: {}", ctx.locale.t("ai_topic_title"), topic_suggestion.replace('\n', " "))))
             }
 
             "roast" => {
                 let target = if args.is_empty() { cmd.author.as_str() } else { args };
-                let prompt = format!(
-                    "Bedenk een gevatte, humoristische en spitsvondige roast over de gebruiker '{}' in klassieke nerdy IRC-stijl. Maximaal 1 à 2 zinnen, geen haatzaaien of grove beledigingen, puur speelse en gevatte nerd/hacker-humor.",
-                    target
-                );
+                let prompt = match ctx.locale.language() {
+                    "nl" => format!(
+                        "Bedenk een gevatte, humoristische en spitsvondige roast over de gebruiker '{}' in klassieke nerdy IRC-stijl. Maximaal 1 à 2 zinnen, geen haatzaaien of grove beledigingen, puur speelse en gevatte nerd/hacker-humor.",
+                        target
+                    ),
+                    "de" => format!(
+                        "Erstelle einen witzigen, humorvollen und schlagfertigen Roast über den Benutzer '{}' im klassischen Nerd-IRC-Stil. Maximal 1-2 Sätze, kein Hass, rein spielerischer Hacker-Humor.",
+                        target
+                    ),
+                    _ => format!(
+                        "Devise a witty, humorous, and sharp roast about user '{}' in classic nerdy IRC style. Maximum 1-2 sentences, no hate speech or slurs, purely playful nerd/hacker humor.",
+                        target
+                    ),
+                };
 
                 let current_model = ctx.ai_manager.get_model();
                 let roast = ctx.ai_client.ask(&cmd.author, &prompt, Some(&current_model)).await?;
-                Ok(Some(format!("🔥 [Roast]: {}", roast.replace('\n', " "))))
+                Ok(Some(format!("🔥 [{}]: {}", ctx.locale.t("ai_roast_title"), roast.replace('\n', " "))))
             }
 
             "whatis" | "def" => {
                 if args.is_empty() {
-                    return Ok(Some("Gebruik: !whatis <begrip> (bijv: !whatis BGP of !whatis Docker)".into()));
+                    return Ok(Some(ctx.locale.t("ai_whatis_usage").to_string()));
                 }
 
-                let prompt = format!(
-                    "Geef een vlijmscherpe, feitelijke en nuchtere definitie van exact 1 regel voor het volgende begrip: {}",
-                    args
-                );
+                let prompt = match ctx.locale.language() {
+                    "nl" => format!(
+                        "Geef een vlijmscherpe, feitelijke en nuchtere definitie van exact 1 regel voor het volgende begrip: {}",
+                        args
+                    ),
+                    "de" => format!(
+                        "Gib eine präzise, sachliche und nüchterne Definition in genau 1 Zeile für folgenden Begriff: {}",
+                        args
+                    ),
+                    _ => format!(
+                        "Provide a sharp, factual, and concise definition in exactly 1 line for the following term: {}",
+                        args
+                    ),
+                };
 
                 let current_model = ctx.ai_manager.get_model();
                 let def = ctx.ai_client.ask(&cmd.author, &prompt, Some(&current_model)).await?;
-                Ok(Some(format!("💡 [Definitie]: {}", def.replace('\n', " "))))
+                Ok(Some(format!("💡 [{}]: {}", ctx.locale.t("ai_def_title"), def.replace('\n', " "))))
             }
 
             "catchup" | "digest" => {
                 if !ctx.ai_manager.can_consume(300) {
-                    return Ok(Some("⚠️ Het tokenbudget voor dit uur is bereikt. Probeer het later nog eens.".into()));
+                    return Ok(Some(format!("⚠️ {}", ctx.locale.t("ai_budget_exceeded"))));
                 }
 
                 let count = if let Ok(n) = args.parse::<i64>() {
@@ -236,48 +290,69 @@ impl Plugin for AiPlugin {
 
                 let recent_logs = ctx.rag.search_history(&cmd.channel, count).await?;
                 if recent_logs.is_empty() {
-                    return Ok(Some("ℹ️ Er is nog niet genoeg recente chatgeschiedenis om een samenvatting te maken.".into()));
+                    return Ok(Some(format!("ℹ️ {}", ctx.locale.t("ai_no_history"))));
                 }
 
                 let logs_text = recent_logs.join("\n");
-                let prompt = format!(
-                    "Vat de recente chatgesprekken in kanaal '{}' beknopt samen voor de terugkerende gebruiker '{}' in maximaal 3 korte bullet points in het Nederlands. Noem expliciet of '{}' werd genoemd of gezocht, en of er concrete afspraken zijn gemaakt:\n\n{}",
-                    cmd.channel, cmd.author, cmd.author, logs_text
-                );
+                let prompt = match ctx.locale.language() {
+                    "nl" => format!(
+                        "Vat de recente chatgesprekken in kanaal '{}' beknopt samen voor de terugkerende gebruiker '{}' in maximaal 3 korte bullet points in het Nederlands. Noem expliciet of '{}' werd genoemd of gezocht, en of er concrete afspraken zijn gemaakt:\n\n{}",
+                        cmd.channel, cmd.author, cmd.author, logs_text
+                    ),
+                    "de" => format!(
+                        "Fasse die aktuellen Chat-Gespräche im Kanal '{}' kurz für den zurückkehrenden Benutzer '{}' in maximal 3 kurzen Stichpunkten auf Deutsch zusammen. Erwähne ausdrücklich, ob '{}' erwähnt oder gesucht wurde und ob konkrete Absprachen getroffen wurden:\n\n{}",
+                        cmd.channel, cmd.author, cmd.author, logs_text
+                    ),
+                    _ => format!(
+                        "Summarize recent chat in channel '{}' concisely for returning user '{}' in at most 3 short bullet points in English. Explicitly mention if '{}' was mentioned or looked for, and if any agreements were made:\n\n{}",
+                        cmd.channel, cmd.author, cmd.author, logs_text
+                    ),
+                };
 
                 let current_model = ctx.ai_manager.get_model();
                 let summary = ctx.ai_client.ask(&cmd.author, &prompt, Some(&current_model)).await?;
                 ctx.ai_manager.record_consumption(200);
 
+                let title = ctx.locale.t("ai_catchup_title");
                 if cmd.platform == "irc" {
                     let lines = Self::format_for_irc(&summary);
-                    Ok(Some(format!("📰 [Catch-up {}]: {}", cmd.author, lines.join(" | "))))
+                    Ok(Some(format!("📰 [{} {}]: {}", title, cmd.author, lines.join(" | "))))
                 } else {
-                    Ok(Some(format!("📰 **[Catch-up voor {}]**:\n{}", cmd.author, summary)))
+                    Ok(Some(format!("📰 **[{} {}]**:\n{}", title, cmd.author, summary)))
                 }
             }
 
             "vibe" | "sentiment" => {
                 if !ctx.ai_manager.can_consume(200) {
-                    return Ok(Some("⚠️ Het tokenbudget voor dit uur is bereikt. Probeer het later nog eens.".into()));
+                    return Ok(Some(format!("⚠️ {}", ctx.locale.t("ai_budget_exceeded"))));
                 }
 
                 let recent_logs = ctx.rag.search_history(&cmd.channel, 30).await?;
                 if recent_logs.is_empty() {
-                    return Ok(Some("ℹ️ Er is nog niet genoeg chatgeschiedenis om de sfeer te peilen.".into()));
+                    return Ok(Some(format!("ℹ️ {}", ctx.locale.t("ai_no_history"))));
                 }
 
                 let logs_text = recent_logs.join("\n");
-                let prompt = format!(
-                    "Peil in maximaal 1 of 2 humoristische, opgewekte zinnen de actuele sfeer en stemming in dit chatkanaal op basis van deze recente berichten. Noem een percentage gezelligheid/vrolijkheid en de 2 heetste onderwerpen in het Nederlands:\n\n{}",
-                    logs_text
-                );
+                let prompt = match ctx.locale.language() {
+                    "nl" => format!(
+                        "Peil in maximaal 1 of 2 humoristische, opgewekte zinnen de actuele sfeer en stemming in dit chatkanaal op basis van deze recente berichten. Noem een percentage gezelligheid/vrolijkheid en de 2 heetste onderwerpen in het Nederlands:\n\n{}",
+                        logs_text
+                    ),
+                    "de" => format!(
+                        "Ermittle in maximal 1 bis 2 humorvollen Sätzen die aktuelle Stimmung in diesem Chat-Kanal basierend auf diesen Nachrichten. Nenne einen Gemütlichkeits-Prozentsatz und die 2 heißesten Themen auf Deutsch:\n\n{}",
+                        logs_text
+                    ),
+                    _ => format!(
+                        "Gauge the current mood and atmosphere in this chat channel based on recent messages in 1 or 2 humorous, upbeat sentences. Mention a cheerfulness percentage and the 2 hottest topics in English:\n\n{}",
+                        logs_text
+                    ),
+                };
 
                 let current_model = ctx.ai_manager.get_model();
                 let vibe = ctx.ai_client.ask(&cmd.author, &prompt, Some(&current_model)).await?;
                 ctx.ai_manager.record_consumption(120);
 
-                Ok(Some(format!("🌡️ [Kanaal Vibe]: {}", vibe.replace('\n', " "))))
+                Ok(Some(format!("🌡️ [{}]: {}", ctx.locale.t("ai_vibe_title"), vibe.replace('\n', " "))))
             }
 
             _ => Ok(None),

@@ -119,7 +119,7 @@ Geïnspireerd door klassieke bots zoals [CloudBot](https://github.com/TotallyNot
 
 ## 🧩 Beschikbare Plugins & Commando's
 
-Alle commando's werken met zowel een uitroepteken (`!`) als een punt (`.`):
+Alle commando's werken standaard met zowel een uitroepteken (`!`) als een punt (`.`), en de prefixen zijn volledig naar eigen wens aan te passen in `config.toml` (`command_prefixes = ["!", "."]`):
 
 | Plugin | Triggers | Beschrijving | Voorbeeld |
 |---|---|---|---|
@@ -134,6 +134,7 @@ Alle commando's werken met zowel een uitroepteken (`!`) als een punt (`.`):
 | | `!whatis <begrip>` | Vlijmscherpe, nuchtere definitie van 1 regel voor een technisch begrip of term. | `!whatis BGP`, `!whatis Docker` |
 | | `!topic suggest` | Laat AI een creatief nieuw kanaaltopic voorstellen. | `!topic suggest` |
 | **Vertalen** | `!tr`, `!translate`, `!vertaal` | Vertaalt zinnen naar het Nederlands of een opgegeven doeltaal via lokale AI / MyMemory. | `!tr How is the weather?`, `!tr en:de Hallo` |
+| **Taalvoorkeur** | `!taal`, `!lang`, `!setlang` | Persoonlijke taalvoorkeur instellen of bekijken (`!lang nl`, `!lang en`, `!lang de`, `!lang reset`). Alle botantwoorden en AI-prompts passen zich direct voor jou aan. | `!taal nl`, `!lang en`, `!taal` |
 | **Presence** | `!seen`, `!lastonline` | Toont wanneer een gebruiker voor het laatst actief was en wat diens laatste actie was. | `!seen Klaas` |
 | | `!online` | Toont een overzicht van actieve gebruikers op IRC en Discord. | `!online` |
 | **AFK** | `!afk` | Schakelt AFK status in. Geeft automatisch antwoord wanneer iemand je noemt. | `!afk Even koffie halen` |
@@ -248,11 +249,12 @@ docker compose logs -f ircord-ollama-init
 
 ## ⚙️ Configuratie
 
-Het bestand `config.toml` regelt alle gedragsparameters van de bot:
+Het bestand `config.toml` regelt alle gedragsparameters van de bot (voorbeeldtemplates beschikbaar in `config.example.nl.toml`, `config.example.toml` en `config.example.de.toml`):
 
 ```toml
 [general]
-language = "nl" # Keuze: "nl" of "en"
+language = "nl" # Keuze: "nl", "en", "de", "fr", "es"
+command_prefixes = ["!", "."] # Herkende commando-prefixen in de chat (bijv. !weer, .weather)
 bot_owner_discord_id = 0
 bot_owner_irc_nick = "Kuuke"
 http_port = 9090
@@ -270,6 +272,8 @@ sync_edits = true
 irc_channel = "#algemeen"
 discord_channel_id = 123456789012345678
 discord_webhook_url = "https://discord.com/api/webhooks/..."
+# Optionele kanaalspecifieke taal: overschrijft [general].language voor dit kanaal
+# language = "nl"
 
 [whatpulse]
 team_name = "Team de Apen"
@@ -323,7 +327,8 @@ IRCord/
 ├── Dockerfile                 # Multi-stage Alpine container voor minimale footprint
 ├── Dockerfile.freetoken       # FlashML FreeToken AI inference container
 ├── docker-compose.yml         # Volledige stack orchestratie
-├── INSTALL.md                 # Uitgebreide installatie- en deploymenthandleiding
+├── INSTALL.nl.md              # Uitgebreide installatiehandleiding (Nederlands)
+├── INSTALL.md                 # Uitgebreide installatiehandleiding (Engels)
 ├── README.nl.md               # Nederlandse documentatie
 └── README.md                  # Hoofddocumentatie (Engels)
 ```
@@ -334,7 +339,7 @@ IRCord/
 
 Voor een diepgaande stap-voor-stap installatiehandleiding (inclusief Discord Bot Portal setup, SASL configuratie, bare-metal installatie en systemd service setup), raadpleeg:
 
-👉 **[INSTALL.md](INSTALL.md)**
+👉 **[INSTALL.nl.md](INSTALL.nl.md)** *(Engelse versie: [INSTALL.md](INSTALL.md))*
 
 ---
 

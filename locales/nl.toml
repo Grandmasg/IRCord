@@ -8,36 +8,153 @@ time = ["tijd", "klok"]
 currency = ["valuta", "koers", "geld"]
 translate = ["vertaal"]
 slap = ["mep"]
-tell = ["herinner"]
+tell = ["herinner", "memo", "note"]
 roast = ["afbranden"]
 whatis = ["watis", "definitie"]
+quote = ["citaat", "quote", "q"]
+karma = ["karma", "reputatie"]
+afk = ["afk", "weg", "brb"]
+poll = ["peiling", "stemming", "poll"]
+remind = ["herinnering", "alarm", "remind", "remindme"]
+birthday = ["verjaardag", "bday"]
+wiki = ["wiki", "encyclopedie"]
+google = ["zoek", "google", "g", "search"]
+minecraft = ["mc", "minecraft", "mcserver"]
+whatpulse = ["whatpulse", "wp"]
+lang = ["taal", "lang", "language", "sprache"]
 
 [messages]
 weather_title = "Weer"
 weather_temp = "Temperatuur"
 weather_wind = "Wind"
-weather_usage = "Gebruik: !weer <plaatsnaam>"
+weather_usage = "Gebruik: !weer <plaatsnaam> (of !weer quota)"
 weather_not_found = "Plaats '{city}' niet gevonden."
+weather_quota_label = "Open-Meteo Quotum"
+weather_minute = "Minuut"
+weather_hour = "Uur"
+weather_today = "Vandaag"
 
 time_title = "Tijd in"
 time_hour_suffix = " uur"
 time_timezone = "Tijdzone"
 time_usage = "Gebruik: !tijd <stad of land>"
 time_not_found = "Locatie '{location}' niet gevonden."
+time_no_tz = "Geen tijdzone bekend voor '{location}'."
+time_fetch_err = "Locatie '{location}' gevonden, maar kon actuele tijd niet ophalen."
 
 currency_crypto_title = "Crypto"
 currency_fx_title = "Valuta"
 currency_rate = "Koers"
+currency_usage = "Gebruik: !valuta <bedrag> <van> <naar> (bijv: !valuta 100 usd eur)"
+currency_not_found = "Wisselkoers niet gevonden voor {from} -> {to}."
+crypto_not_found = "Geen koersdata gevonden voor '{ticker}'. Probeer bijv: !crypto btc of !crypto eth"
+crypto_error = "Kon cryptokoers voor '{ticker}' niet ophalen."
 
 ai_vision_title = "AI Afbeelding"
 ai_translation_title = "AI Vertaling"
 web_translation_title = "Vertaling"
 ai_roast_title = "Roast"
 ai_def_title = "Definitie"
+ai_usage = "Gebruik: !ai <jouw vraag> | !ai models | !ai model <naam>"
+ai_too_long = "Je vraag is te lang (maximaal 1200 tekens toegestaan)."
+ai_budget_exceeded = "Het tokenbudget voor dit uur is bereikt. Probeer het later nog eens."
+ai_tldr_web = "TL;DR Web"
+ai_tldr_chat = "TL;DR Samenvatting"
+ai_topic_title = "Topic Suggestie"
+ai_catchup_title = "Catch-up"
+ai_vibe_title = "Kanaal Vibe"
+ai_no_history = "Er zijn nog niet genoeg recente chatberichten gelogd voor een samenvatting."
+ai_models_active = "Actief: '{model}' | Beschikbaar op server: [{list}]"
+ai_models_err = "Actief model: '{model}' (kon server-modellenlijst niet ophalen)"
+ai_admin_only = "Alleen de bot eigenaar of operators mogen het AI model wijzigen."
+ai_model_usage = "Gebruik: !ai model <naam> (bijv: !ai model qwen2.5-coder)"
+ai_model_changed = "Actief model gewijzigd naar '{model}'"
+ai_url_blocked = "Deze URL is niet toegestaan (interne en beveiligde adressen worden geblokkeerd)."
+ai_url_failed = "Kon de pagina op '{url}' niet ophalen voor een samenvatting."
+ai_no_article_text = "Kon geen leesbare artikeltekst vinden op de pagina om samen te vatten."
+ai_whatis_usage = "Gebruik: !whatis <begrip> (bijv: !whatis BGP of !whatis Docker)"
+
 
 urban_title = "Urban"
+urban_usage = "Gebruik: !ud <zoekterm>"
+urban_not_found = "Geen definitie gevonden op Urban Dictionary voor '{term}'."
+urban_example_prefix = "Vb:"
+
 minecraft_title = "Minecraft"
 minecraft_online = "ONLINE 🟢"
 minecraft_offline = "OFFLINE 🔴"
 minecraft_players = "Spelers"
 minecraft_version = "Versie"
+minecraft_usage = "Gebruik: !mc <server-adres> (bijv: !mc mc.hypixel.net)"
+minecraft_unknown = "Onbekend"
+minecraft_error = "Kon serverstatus voor '{server}' niet opvragen."
+
+tell_usage = "Gebruik: !tell <gebruiker> <bericht>"
+tell_self = "Je kunt geen memo aan jezelf achterlaten."
+tell_saved = "Memo voor \u0002{recipient}\u0002 opgeslagen. Ik geef het door zodra diegene actief is!"
+tell_received_header = "Hallo \u0002{author}\u0002, je hebt openstaande memo's:"
+tell_received_item = "[Memo van \u0002{sender}\u0002 ({time})]: {message}"
+
+remind_usage = "Gebruik: !remindme <getal><m/h/d> <bericht> (bijvoorbeeld: !remindme 20m pizza uit de oven)"
+remind_invalid_time = "Ongeldige tijdsaanduiding. Gebruik bijv. 10m, 2h of 1d."
+remind_saved = "{author}, je herinnering voor '{message}' staat genoteerd (over {count} {unit})!"
+remind_unit_minute = "minuten"
+remind_unit_hour = "uur"
+remind_unit_day = "dag(en)"
+
+quote_usage = "Gebruik: !quote add <tekst> | !quote [zoekterm] | !quote random"
+quote_saved = "Citaat succesvol opgeslagen in de database!"
+quote_not_found = "Geen citaten gevonden die aan de zoekopdracht voldoen."
+
+karma_self = "🚫 {author}, je mag je eigen karma niet aanpassen!"
+karma_score = "⭐ [Karma] {target} heeft een score van {score}"
+karma_new_score = "⭐ [Karma] {target} heeft nu een score van {score}"
+
+afk_default_reason = "even afwezig"
+afk_set = "💤 {author} is nu AFK: {reason}"
+afk_welcome_back = "👋 Welkom terug {author}, je was {mins} minuten AFK."
+afk_mention = "💤 [{user}] is AFK sinds {mins} minuten geleden (Reden: {reason})"
+
+poll_usage = "Gebruik: !poll start \"Vraag?\" optie1/optie2"
+poll_need_quotes = "Sluit de vraag af met dubbele aanhalingstekens: !poll start \"Vraag?\" optie1/optie2"
+poll_min_options = "Een peiling moet minimaal 2 opties hebben, gescheiden door een slash (/): optie1/optie2"
+poll_vote_usage = "Geef een geldig optienummer op: !poll vote 1"
+poll_vote_invalid = "Ongeldige keuze. Kies tussen 1 en {max}."
+poll_voted = "Stem geregistreerd voor optie [{choice}]: '{option}'."
+poll_ended = "Peiling #{id} gesloten. Winnende optie: '{winner}' met {votes} stemmen!"
+poll_none_active = "Geen actieve peiling in dit kanaal."
+
+birthday_usage = "⚠️ Ongeldige datum. Gebruik het formaat: !bday set DD-MM (bijv. !bday set 24-09) of met jaar (bijv. !bday set 24-09-1995)"
+birthday_saved = "🎂 [Verjaardag] Opgeslagen voor \u0002{author}\u0002! Jouw verjaardag staat op \u0002{date}\u0002 (dat is {relative}). Ik zal je 's ochtends feliciteren in {channel}!"
+birthday_deleted = "🗑️ [Verjaardag] Jouw verjaardag is succesvol verwijderd voor \u0002{author}\u0002."
+birthday_not_registered = "ℹ️ Je had nog geen verjaardag geregistreerd."
+birthday_none_registered = "Geen verjaardagen geregistreerd in de database."
+birthday_upcoming_header = "🎂 [Aankomende Verjaardagen]"
+birthday_celebration_age = "🎂 🎉 🎈 Gefeliciteerd met je verjaardag, \u0002{name}\u0002! Vandaag \u0002{age}\u0002 jaar geworden! Maak er een geweldige dag van! 🥳 🍰"
+birthday_celebration = "🎂 🎉 🎈 Gefeliciteerd met je verjaardag, \u0002{name}\u0002! Een hele fijne en feestelijke dag gewenst! 🥳 🍰"
+
+google_usage = "ℹ️ Gebruik: !g <zoekterm>"
+google_not_found = "🔍 Geen zoekresultaten gevonden voor: \"{query}\""
+
+wiki_usage = "Gebruik: !wiki [taal] <zoekterm>"
+wiki_not_found = "📖 Geen Wikipedia-artikel gevonden voor '{term}'."
+
+youtube_usage = "ℹ️ Gebruik: !yt <zoekterm>"
+youtube_desc_prefix = "Omschrijving:"
+youtube_by = "door"
+youtube_unknown = "Onbekend"
+
+whatpulse_no_top = "Geen WhatPulse topleden beschikbaar in de feed."
+whatpulse_link_usage = "Gebruik: !wp link <jouw_whatpulse_username>"
+whatpulse_linked = "✅ {author} is nu gekoppeld aan WhatPulse profiel '{username}'!"
+whatpulse_not_linked = "ℹ️ Je hebt je WhatPulse profiel nog niet gekoppeld. Gebruik: !wp link <jouw_whatpulse_username>"
+whatpulse_user_usage = "Gebruik: !wp user <whatpulse_username>"
+whatpulse_team_stats = "⌨️ [{name}] Wereldwijde Rank: #{rank} | Leden: {members} | Keys: {keys} | Clicks: {clicks} | Download: {download} MB"
+whatpulse_api_key_tip = "ℹ️ Om live gebruikersstatistieken voor '{target}' op te vragen, vul WHATPULSE_API_KEY in je .env in (gratis aan te maken op https://whatpulse.org/settings/api)."
+
+link_title = "Link Titel"
+lang_title = "Taal"
+lang_current = "🌐 [{title}] Jouw huidige taalvoorkeur is '{lang}' (standaard: '{default}'). Beschikbare talen: {available}. Wijzigen: !lang <code|naam> (bijv. !lang nl of !lang en)."
+lang_set_success = "✅ [{title}] Je taalvoorkeur is succesvol ingesteld op '{lang}'!"
+lang_unknown = "⚠️ [{title}] Onbekende taal '{input}'. Beschikbare talen: {available}."
+lang_reset = "🔄 [{title}] Je taalvoorkeur is gereset naar de kanaal-/serverstandaard ('{default}')."

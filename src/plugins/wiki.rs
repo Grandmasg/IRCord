@@ -44,25 +44,27 @@ impl Plugin for WikipediaPlugin {
     ) -> Result<Option<String>, Box<dyn std::error::Error + Send + Sync>> {
         let term = cmd.args.trim();
         if term.is_empty() {
-            return Ok(Some("Gebruik: !wiki <zoekterm>".into()));
+            return Ok(Some(ctx.locale.t("wiki_usage").into()));
         }
 
-        // Ondersteun expliciete taalselectie: !wiki en <zoekterm> of !wiki nl <zoekterm>
+        let default_lang = ctx.locale.language().to_string();
+
+        // Support explicit language selection: !wiki en <searchterm> or !wiki nl <searchterm>
         let (lang, query) = if let Some((first, rest)) = term.split_once(' ') {
-            if first.eq_ignore_ascii_case("en") || first.eq_ignore_ascii_case("nl") || first.eq_ignore_ascii_case("de") {
+            if first.eq_ignore_ascii_case("en") || first.eq_ignore_ascii_case("nl") || first.eq_ignore_ascii_case("de") || first.eq_ignore_ascii_case("fr") || first.eq_ignore_ascii_case("es") {
                 (first.to_lowercase(), rest.trim())
             } else {
-                ("nl".to_string(), term)
+                (default_lang, term)
             }
         } else {
-            ("nl".to_string(), term)
+            (default_lang, term)
         };
 
         if query.is_empty() {
-            return Ok(Some("Gebruik: !wiki [taal] <zoekterm>".into()));
+            return Ok(Some(ctx.locale.t("wiki_usage").into()));
         }
 
-        // Probeer eerst gekozen taal (standaard NL)
+        // Try selected language
         let encoded = urlencoding_simple(query);
         let url = format!("https://{}.wikipedia.org/api/rest_v1/page/summary/{}", lang, encoded);
 
@@ -73,8 +75,8 @@ impl Plugin for WikipediaPlugin {
             .send()
             .await?;
 
-        // Fallback naar Engels als NL 404 geeft
-        let (final_resp, used_lang) = if resp.status().as_u16() == 404 && lang == "nl" {
+        // Fallback to English if non-English returns 404
+        let (final_resp, used_lang) = if resp.status().as_u16() == 404 && lang != "en" {
             let en_url = format!("https://en.wikipedia.org/api/rest_v1/page/summary/{}", encoded);
             let en_resp = ctx
                 .http
@@ -89,8 +91,8 @@ impl Plugin for WikipediaPlugin {
 
         if !final_resp.status().is_success() {
             return Ok(Some(format!(
-                "📖 Geen Wikipedia-artikel gevonden voor '{}'.",
-                query
+                "📖 {}",
+                ctx.locale.tf("wiki_not_found", &[("term", query)])
             )));
         }
 

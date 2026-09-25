@@ -121,7 +121,7 @@ Drawing inspiration from classic bots such as [CloudBot](https://github.com/Tota
 
 ## 🧩 Available Plugins & Commands
 
-All commands accept either an exclamation mark (`!`) or a period (`.`):
+All commands accept either an exclamation mark (`!`) or a period (`.`) by default, and command prefixes can be customized in `config.toml` (`command_prefixes = ["!", "."]`):
 
 | Plugin | Canonical & Alias Triggers | Description | Example |
 |---|---|---|---|
@@ -136,6 +136,7 @@ All commands accept either an exclamation mark (`!`) or a period (`.`):
 | | `!whatis <term>`, `!def` | Razor-sharp, factual 1-line definition for technical terms or acronyms. | `!whatis BGP`, `!whatis Docker` |
 | | `!topic suggest` | AI generates a creative, relevant channel topic suggestion. | `!topic suggest` |
 | **Translate** | `!translate`, `!tr`, `!vertaal` | Translates text using local AI (with seamless fallback to web translation). | `!tr en:de Good morning!`, `!tr Where is the train?` |
+| **Language** | `!lang`, `!taal`, `!setlang` | Set or inspect your personal language preference (`!lang nl`, `!lang en`, `!lang de`, `!lang reset`). Responses & AI prompts automatically adapt. | `!lang nl`, `!lang en`, `!lang` |
 | **Weather** | `!weather`, `!weer`, `!wetter`| Current weather, temperature, and wind speed via Open-Meteo. | `!weather Amsterdam`, `!weather Tokyo` |
 | **Time** | `!time`, `!tijd`, `!clock`, `!klok` | Real-time world clock and timezone information for any city or country. | `!time Tokyo`, `!time New York` |
 | **Crypto & FX**| `!crypto`, `!coin` | Live cryptocurrency prices in EUR & USD with 24h trends (CoinGecko). | `!crypto btc`, `!crypto eth`, `!crypto sol` |
@@ -231,11 +232,12 @@ docker compose logs -f ircord-ollama-init
 
 ## ⚙️ Configuration
 
-`config.toml` manages all daemon runtime parameters:
+`config.toml` manages all daemon runtime parameters (example templates provided in `config.example.toml`, `config.example.nl.toml`, and `config.example.de.toml`):
 
 ```toml
 [general]
-language = "en" # "en" (English) or "nl" (Dutch) for chat output labels
+language = "en" # Default language: "en", "nl", "de", "fr", "es"
+command_prefixes = ["!", "."] # Recognized command prefixes in chat (e.g. !weer, .weather)
 bot_owner_discord_id = 0
 bot_owner_irc_nick = "Kuuke"
 http_port = 9090
@@ -253,6 +255,8 @@ sync_edits = true
 irc_channel = "#general"
 discord_channel_id = 123456789012345678
 discord_webhook_url = "https://discord.com/api/webhooks/..."
+# Optional channel-specific language: overrides [general].language for this channel
+# language = "en"
 
 [whatpulse]
 team_name = "Team de Apen"
@@ -307,6 +311,7 @@ IRCord/
 ├── Dockerfile.freetoken       # FlashML FreeToken AI inference container
 ├── docker-compose.yml         # Full stack orchestration
 ├── INSTALL.md                 # Installation and deployment guide (English)
+├── INSTALL.nl.md              # Installation and deployment guide (Dutch)
 ├── README.nl.md               # Complete Dutch documentation
 └── README.md                  # Main documentation (English)
 ```
@@ -317,7 +322,7 @@ IRCord/
 
 For a comprehensive guide covering Discord Developer Portal setup, SASL account configuration, bare-metal installation, and systemd services, refer to:
 
-👉 **[INSTALL.md](INSTALL.md)**
+👉 **[INSTALL.md](INSTALL.md)** *(Dutch version: [INSTALL.nl.md](INSTALL.nl.md))*
 
 ---
 

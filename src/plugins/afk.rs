@@ -22,9 +22,9 @@ impl Plugin for AfkPlugin {
     fn triggers(&self) -> &[&'static str] { &["afk"] }
     fn help(&self) -> &'static str { "!afk [reden] - Meld jezelf afwezig" }
 
-    async fn on_command(&self, _ctx: &PluginContext, cmd: &CommandEvent) -> Result<Option<String>, Box<dyn std::error::Error + Send + Sync>> {
+    async fn on_command(&self, ctx: &PluginContext, cmd: &CommandEvent) -> Result<Option<String>, Box<dyn std::error::Error + Send + Sync>> {
         let reason = if cmd.args.trim().is_empty() {
-            "even afwezig".to_string()
+            ctx.locale.t("afk_default_reason").to_string()
         } else {
             cmd.args.trim().to_string()
         };
@@ -34,29 +34,31 @@ impl Plugin for AfkPlugin {
             afk.insert(cmd.author.to_lowercase(), (reason.clone(), Instant::now()));
         }
 
-        Ok(Some(format!("💤 {} is nu AFK: {}", cmd.author, reason)))
+        Ok(Some(ctx.locale.tf("afk_set", &[("author", &cmd.author), ("reason", &reason)])))
     }
 
-    async fn on_message(&self, _ctx: &PluginContext, msg: &MessageEvent) -> Result<Option<String>, Box<dyn std::error::Error + Send + Sync>> {
+    async fn on_message(&self, ctx: &PluginContext, msg: &MessageEvent) -> Result<Option<String>, Box<dyn std::error::Error + Send + Sync>> {
         let author_key = msg.author.to_lowercase();
 
-        // 1. Als de gebruiker zelf weer typt, verwijder AFK status
+        // 1. If the user chats again, clear AFK status
         {
             let mut afk = self.afk_users.lock().unwrap();
             if let Some((_, start)) = afk.remove(&author_key) {
                 let mins = start.elapsed().as_secs() / 60;
-                return Ok(Some(format!("👋 Welkom terug {}, je was {} minuten AFK.", msg.author, mins)));
+                let mins_str = mins.to_string();
+                return Ok(Some(ctx.locale.tf("afk_welcome_back", &[("author", &msg.author), ("mins", &mins_str)])));
             }
         }
 
-        // 2. Controleer of iemand een AFK-gebruiker mentiont
+        // 2. Check if someone mentions an AFK user
         let words: Vec<&str> = msg.content.split_whitespace().collect();
         let afk = self.afk_users.lock().unwrap();
         for word in words {
             let clean_word = word.trim_matches(|c: char| !c.is_alphanumeric()).to_lowercase();
             if let Some((reason, start)) = afk.get(&clean_word) {
                 let mins = start.elapsed().as_secs() / 60;
-                return Ok(Some(format!("💤 [{}] is AFK sinds {} minuten geleden (Reden: {})", word, mins, reason)));
+                let mins_str = mins.to_string();
+                return Ok(Some(ctx.locale.tf("afk_mention", &[("user", word), ("mins", &mins_str), ("reason", reason)])));
             }
         }
 
