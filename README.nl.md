@@ -301,7 +301,7 @@ IRCord/
 ├── migrations/                # SQLite database migraties (schema & FTS5)
 │   └── 20260908_init.sql
 ├── scripts/                   # Hot-reloadbare Rhai scripts voor community commando's
-│   └── hallo.rhai
+│   └── hello.rhai
 ├── src/
 │   ├── ai/                    # FreeToken client, RAG searcher & Vision helpers
 │   ├── bridge/                # Bridge router, normalisatie & deduplicatie cache
