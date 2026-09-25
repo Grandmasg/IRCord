@@ -284,7 +284,8 @@ IRCord/
 ├── migrations/                # SQLite database migrations (schema & FTS5)
 │   └── 20260908_init.sql
 ├── scripts/                   # Hot-reloadable Rhai scripts for community commands
-│   └── hello.rhai
+│   ├── hello.rhai             # Multilingual greeting script (English/Dutch/German)
+│   └── hallo.rhai             # Dutch-focused greeting script
 ├── src/
 │   ├── ai/                    # FreeToken client, RAG searcher & Vision helpers
 │   ├── bridge/                # Bridge router, normalizer & deduplication cache

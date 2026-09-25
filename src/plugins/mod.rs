@@ -28,6 +28,7 @@ pub mod identity;
 pub mod sysadmin;
 pub mod rss;
 pub mod tech;
+pub mod rhai;
 
 use async_trait::async_trait;
 use reqwest::Client;
