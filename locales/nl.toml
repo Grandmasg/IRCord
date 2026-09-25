@@ -1,0 +1,43 @@
+[meta]
+name = "Nederlands"
+code = "nl"
+
+[aliases]
+weather = ["weer", "w"]
+time = ["tijd", "klok"]
+currency = ["valuta", "koers", "geld"]
+translate = ["vertaal"]
+slap = ["mep"]
+tell = ["herinner"]
+roast = ["afbranden"]
+whatis = ["watis", "definitie"]
+
+[messages]
+weather_title = "Weer"
+weather_temp = "Temperatuur"
+weather_wind = "Wind"
+weather_usage = "Gebruik: !weer <plaatsnaam>"
+weather_not_found = "Plaats '{city}' niet gevonden."
+
+time_title = "Tijd in"
+time_hour_suffix = " uur"
+time_timezone = "Tijdzone"
+time_usage = "Gebruik: !tijd <stad of land>"
+time_not_found = "Locatie '{location}' niet gevonden."
+
+currency_crypto_title = "Crypto"
+currency_fx_title = "Valuta"
+currency_rate = "Koers"
+
+ai_vision_title = "AI Afbeelding"
+ai_translation_title = "AI Vertaling"
+web_translation_title = "Vertaling"
+ai_roast_title = "Roast"
+ai_def_title = "Definitie"
+
+urban_title = "Urban"
+minecraft_title = "Minecraft"
+minecraft_online = "ONLINE 🟢"
+minecraft_offline = "OFFLINE 🔴"
+minecraft_players = "Spelers"
+minecraft_version = "Versie"

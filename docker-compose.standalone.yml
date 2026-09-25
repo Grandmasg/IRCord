@@ -1,0 +1,37 @@
+version: '3.8'
+
+# ==============================================================================
+# IRCord Standalone (Bot Daemon Only)
+# Connects to an existing AI server on the Host (Ollama/vLLM/LM Studio) or LAN
+# Run easily with: docker compose -f docker-compose.standalone.yml up -d --build
+# ==============================================================================
+
+services:
+  ircord:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ircord-daemon
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    extra_hosts:
+      # Enables connecting to host machine services via host.docker.internal
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./data:/app/data
+      - ./config.toml:/app/config.toml:ro
+      - ./scripts:/app/scripts:ro
+      - ./.env:/app/.env:ro
+    environment:
+      - DATABASE_URL=sqlite:///app/data/ircord.db
+      - FREETOKEN_BASE_URL=${FREETOKEN_BASE_URL:-http://host.docker.internal:11434/v1}
+      - FREETOKEN_MODEL=${FREETOKEN_MODEL:-qwen2.5:7b}
+      - RUST_LOG=info,ircord=debug
+    deploy:
+      resources:
+        limits:
+          memory: 64M
+          cpus: '0.50'
+        reservations:
+          memory: 16M

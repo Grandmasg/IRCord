@@ -1,0 +1,92 @@
+version: '3.8'
+
+# ==============================================================================
+# IRCord + Ollama AI (Recommended Standard for Minisforum N5 Pro & AMD GPU)
+# Run easily with: docker compose up -d --build
+# ==============================================================================
+
+services:
+  # 1. Ollama AI Inference Engine with AMD ROCm / Radeon GPU acceleration
+  ollama:
+    image: ${OLLAMA_IMAGE:-ollama/ollama:rocm}
+    container_name: ircord-ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      # Persist models on the host machine
+      - ./data/ollama:/root/.ollama
+    # Direct AMD GPU device access (Radeon 890M / Minisforum N5 Pro)
+    devices:
+      - "/dev/kfd:/dev/kfd"
+      - "/dev/dri:/dev/dri"
+    group_add:
+      - video
+      - render
+    environment:
+      - HSA_OVERRIDE_GFX_VERSION=${HSA_OVERRIDE_GFX_VERSION:-11.0.0}
+      - HCC_AMDGPU_TARGET=${HCC_AMDGPU_TARGET:-gfx1100}
+      - OLLAMA_KEEP_ALIVE=-1 # Keep model in memory indefinitely for zero cold-start delay
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list > /dev/null 2>&1 || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 6
+      start_period: 5s
+    deploy:
+      resources:
+        reservations:
+          memory: 4G
+
+  # 2. Automated Model Installer: pulls configured model (e.g. qwen2.5:7b) on initial startup
+  ollama-init:
+    image: ${OLLAMA_IMAGE:-ollama/ollama:rocm}
+    container_name: ircord-ollama-init
+    restart: "no"
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      - OLLAMA_HOST=ollama:11434
+      - FREETOKEN_MODEL=${FREETOKEN_MODEL:-qwen2.5:7b}
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        echo "=========================================================="
+        echo "⏳ IRCord Installer: downloading AI model '$${FREETOKEN_MODEL}'..."
+        echo "=========================================================="
+        ollama pull "$${FREETOKEN_MODEL}"
+        echo "✅ Model '$${FREETOKEN_MODEL}' is ready for use!"
+
+  # 3. IRCord Hybrid IRC-Discord Bot Daemon
+  ircord:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ircord-daemon
+    restart: unless-stopped
+    depends_on:
+      ollama:
+        condition: service_healthy
+    ports:
+      - "9090:9090"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./data:/app/data
+      - ./config.toml:/app/config.toml:ro
+      - ./scripts:/app/scripts:ro
+      - ./.env:/app/.env:ro
+    environment:
+      - DATABASE_URL=sqlite:///app/data/ircord.db
+      - FREETOKEN_BASE_URL=http://ollama:11434/v1
+      - FREETOKEN_MODEL=${FREETOKEN_MODEL:-qwen2.5:7b}
+      - RUST_LOG=info,ircord=debug
+    deploy:
+      resources:
+        limits:
+          memory: 64M
+          cpus: '0.50'
+        reservations:
+          memory: 16M

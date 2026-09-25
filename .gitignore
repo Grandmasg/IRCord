@@ -1,0 +1,71 @@
+# ==============================================================================
+# 1. Secrets & Environment Credentials (CRITICAL: NEVER PUSH TO GITHUB!)
+# ==============================================================================
+.env
+.env.local
+.env.*.local
+*.key
+*.pem
+*.cert
+*.crt
+*.pfx
+
+# ==============================================================================
+# 2. Local Databases & Chat Data (Data Privacy & FTS5 storage)
+# ==============================================================================
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+ircord.db
+
+# ==============================================================================
+# 3. Rust Compiler Output & Build Artifacts (Can be several GBs)
+# ==============================================================================
+/target/
+target/
+**/*.rs.bk
+*.pdb
+
+# ==============================================================================
+# 4. Docker Volumes & Persistent AI Model Weights
+# ==============================================================================
+/data/
+/models/
+data/
+models/
+
+# ==============================================================================
+# 5. OS & Editor Specific Files
+# ==============================================================================
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Linux
+*~
+
+# IDEs & Workspaces
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace
+.gemini/
+
+# ==============================================================================
+# 6. Local AI Agent Instructions & Prompts (Privé / niet naar Git)
+# ==============================================================================
+AGENTS.md
+CLAUDE.md
+.cursorrules
+.agents/
+
+

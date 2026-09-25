@@ -1,0 +1,53 @@
+[general]
+language = "en" # Default chat output language: "en" (English) or "nl" (Dutch)
+bot_owner_discord_id = 0
+bot_owner_irc_nick = "Kuuke"
+http_port = 9090
+pastebin_threshold_lines = 4
+admin_channel_irc = "#bot-logs"
+admin_channel_discord_id = 0 # Optional: Discord channel ID for #bot-logs
+
+[bridge]
+loop_prevent_timeout_sec = 10
+lru_cache_capacity = 2000
+sync_presence = true
+sync_edits = true
+
+# Multi-channel matrix mappings
+[[channels]]
+irc_channel = "#algemeen"
+discord_channel_id = 123456789012345678
+discord_webhook_url = "https://discord.com/api/webhooks/..."
+
+# WhatPulse Instellingen ("Team de Apen")
+[whatpulse]
+team_name = "Team de Apen"
+# Officiële WhatPulse Web API v1 (zie https://whatpulse.org/help/api/web/intro)
+# Vereist WHATPULSE_API_KEY in .env
+# Of gebruik optioneel een custom team feed zoals "https://www.grandmasg.nl/WPNEW/api.php"
+api_url = "https://whatpulse.org/api/v1"
+poll_interval_seconds = 180
+cache_ttl_seconds = 300
+
+# FlashML FreeToken AI Instellingen
+[ai]
+base_url = "http://127.0.0.1:1919/v1"
+default_model = "default"
+max_tokens = 300
+temperature = 0.7
+sliding_window_size = 8
+hourly_token_budget = 50000
+
+# Moderatie & Flood Guard
+[moderation]
+irc_flood_delay_ms = 800
+irc_line_max_bytes = 380
+raid_threshold_joins_per_sec = 5
+raid_mute_duration_sec = 60
+
+# Open-Meteo Quota Governor (proactieve blokkade vóór overschrijding)
+[open_meteo]
+daily_limit = 9500     # Open-Meteo gratis limiet is 10.000 calls/dag (veiligheidsstop op 9.500)
+hourly_limit = 4500    # Limiet is 5.000 calls/uur (veiligheidsstop op 4.500)
+minutely_limit = 500   # Limiet is 600 calls/min (veiligheidsstop op 500)
+

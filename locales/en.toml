@@ -1,0 +1,43 @@
+[meta]
+name = "English"
+code = "en"
+
+[aliases]
+weather = ["weather", "w"]
+time = ["time", "clock"]
+currency = ["currency", "crypto", "coin", "fx"]
+translate = ["translate", "tr"]
+slap = ["slap"]
+tell = ["tell", "memo", "note"]
+roast = ["roast"]
+whatis = ["whatis", "def"]
+
+[messages]
+weather_title = "Weather"
+weather_temp = "Temperature"
+weather_wind = "Wind"
+weather_usage = "Usage: !weather <city>"
+weather_not_found = "Location '{city}' not found."
+
+time_title = "Time in"
+time_hour_suffix = ""
+time_timezone = "Timezone"
+time_usage = "Usage: !time <city or country>"
+time_not_found = "Location '{location}' not found."
+
+currency_crypto_title = "Crypto"
+currency_fx_title = "Currency"
+currency_rate = "Rate"
+
+ai_vision_title = "AI Vision"
+ai_translation_title = "AI Translation"
+web_translation_title = "Translation"
+ai_roast_title = "Roast"
+ai_def_title = "Definition"
+
+urban_title = "Urban"
+minecraft_title = "Minecraft"
+minecraft_online = "ONLINE 🟢"
+minecraft_offline = "OFFLINE 🔴"
+minecraft_players = "Players"
+minecraft_version = "Version"

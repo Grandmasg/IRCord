@@ -1,0 +1,69 @@
+version: '3.8'
+
+# ==============================================================================
+# IRCord + FlashML FreeToken Engine (ROCm 6.1)
+# Run easily with: docker compose -f docker-compose.freetoken.yml up -d --build
+# ==============================================================================
+
+services:
+  # 1. FlashML FreeToken Edge-Native AI Inference Server
+  freetoken:
+    build:
+      context: .
+      dockerfile: Dockerfile.freetoken
+    container_name: freetoken-engine
+    restart: unless-stopped
+    ipc: host
+    ports:
+      - "1919:1919"
+    volumes:
+      - ./models:/root/.cache/huggingface
+    devices:
+      - "/dev/kfd:/dev/kfd"
+      - "/dev/dri:/dev/dri"
+    group_add:
+      - video
+      - render
+    environment:
+      - HSA_OVERRIDE_GFX_VERSION=11.0.0
+      - HCC_AMDGPU_TARGET=gfx1100
+      - MODEL_NAME=deepseek-ai/DeepSeek-V2-Lite-Chat
+      - HOST=0.0.0.0
+      - PORT=1919
+      - OMP_NUM_THREADS=16
+    deploy:
+      resources:
+        limits:
+          memory: 32G
+          cpus: '20.0'
+        reservations:
+          memory: 4G
+
+  # 2. IRCord Hybrid Bot Daemon
+  ircord:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ircord-daemon
+    restart: unless-stopped
+    depends_on:
+      - freetoken
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./data:/app/data
+      - ./config.toml:/app/config.toml:ro
+      - ./scripts:/app/scripts:ro
+      - ./.env:/app/.env:ro
+    environment:
+      - DATABASE_URL=sqlite:///app/data/ircord.db
+      - FREETOKEN_BASE_URL=http://freetoken:1919/v1
+      - FREETOKEN_MODEL=${FREETOKEN_MODEL:-default}
+      - RUST_LOG=info,ircord=debug
+    deploy:
+      resources:
+        limits:
+          memory: 64M
+          cpus: '0.50'
+        reservations:
+          memory: 16M

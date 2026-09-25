@@ -1,0 +1,56 @@
+# ==============================================================================
+# FreeToken (FlashML-org) - AMD ROCm Accelerated Server Dockerfile
+# Specifiek geconfigureerd voor AMD Radeon 890M (RDNA 3.5) / Strix Point
+# ==============================================================================
+
+FROM rocm/dev-ubuntu-22.04:6.1
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV TZ=Europe/Amsterdam
+ENV PYTHONUNBUFFERED=1
+ENV PATH="/root/.local/bin:$PATH"
+
+# Radeon 890M (RDNA 3.5 iGPU) override zodat ROCm HIP het herkent als gfx1100
+ENV HSA_OVERRIDE_GFX_VERSION=11.0.0
+ENV HCC_AMDGPU_TARGET=gfx1100
+ENV ROCM_HOME=/opt/rocm
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    software-properties-common \
+    curl \
+    git \
+    build-essential \
+    libglib2.0-0 \
+    libgl1 \
+    && add-apt-repository -y ppa:deadsnakes/ppa \
+    && apt-get update && apt-get install -y --no-install-recommends \
+    python3.12 python3.12-venv python3.12-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Installeer de ultrasnelle package manager 'uv'
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+
+WORKDIR /app
+
+# Installeer PyTorch met ROCm 6.1 support en FreeToken
+RUN uv pip install --system --no-cache \
+    --extra-index-url https://download.pytorch.org/whl/rocm6.1 \
+    torch torchvision torchaudio
+
+RUN uv pip install --system --no-cache "freetoken[accel]" || uv pip install --system --no-cache freetoken
+
+# Creëer map voor gecachte weights / Hugging Face modellen
+RUN mkdir -p /root/.cache/huggingface /models
+
+# Standaard omgevingsvariabelen
+ENV MODEL_NAME="deepseek-ai/DeepSeek-V2-Lite-Chat"
+ENV HOST="0.0.0.0"
+ENV PORT="1919"
+ENV OMP_NUM_THREADS="16"
+
+EXPOSE 1919
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:1919/v1/models || exit 1
+
+CMD ft serve --model "${MODEL_NAME}" --host "${HOST}" --port "${PORT}"

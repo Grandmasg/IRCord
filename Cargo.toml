@@ -1,0 +1,37 @@
+[package]
+name = "ircord"
+version = "0.1.0"
+edition = "2021"
+authors = ["IRCord Team"]
+description = "High-performance hybrid IRC-Discord AI bot daemon in Rust"
+
+[dependencies]
+tokio = { version = "1.40", features = ["full"] }
+tokio-util = { version = "0.7", features = ["rt"] }
+serenity = { version = "0.12", default-features = false, features = ["client", "gateway", "rustls_backend", "model", "cache"] }
+irc = "1.0"
+axum = "0.7"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "multipart"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+toml = "0.8"
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio-rustls", "sqlite", "macros", "migrate"] }
+async-trait = "0.1"
+futures-util = "0.3"
+regex = "1.10"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+dotenvy = "0.15"
+scraper = "0.20"
+rhai = { version = "1.19", features = ["sync"] }
+chrono = { version = "0.4", features = ["serde"] }
+feed-rs = "1.5"
+hmac = "0.12"
+sha2 = "0.10"
+hex = "0.4"
+notify = "6.1"
+lru = "0.12"
+
+[dev-dependencies]
+tokio-test = "0.4"
+wiremock = "0.6"
