@@ -135,7 +135,7 @@ impl BridgeRouter {
 
     /// Formatteert een binnenkomend IRC-bericht voor weergave via een Discord Webhook
     pub fn format_for_discord_webhook(&self, msg: &BridgeMessage) -> (String, String) {
-        let username = format!("{} (IRC)", msg.author_name);
+        let username = msg.author_name.clone();
         let clean_content = strip_mirc_codes(&msg.content);
         (username, clean_content)
     }

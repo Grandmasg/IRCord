@@ -25,7 +25,7 @@ use bridge::router::BridgeRouter;
 use bridge::{BridgeMessage, Platform};
 use config::Config;
 use discord::handler::DiscordHandler;
-use discord::webhook::WebhookDispatcher;
+use discord::webhook::{AvatarResolver, WebhookDispatcher};
 use irc::client::IrcClient;
 use plugins::{
     admin::AdminPlugin, afk::AfkPlugin, ai::AiPlugin, alias::AliasPlugin, crypto::CryptoPlugin,
@@ -208,6 +208,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         cfg.general.command_prefixes.clone(),
     ));
     let webhook_dispatcher = Arc::new(WebhookDispatcher::new());
+    let discord_token = std::env::var("DISCORD_BOT_TOKEN").unwrap_or_default();
+    let avatar_resolver = Arc::new(AvatarResolver::new(
+        pool.clone(),
+        discord_token.clone(),
+        cfg.general.bot_owner_irc_nick.clone(),
+        cfg.general.bot_owner_discord_id,
+    ));
 
     // 8. Initialiseer Graceful Shutdown Handler
     let shutdown = ShutdownManager::new();
@@ -235,7 +242,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     });
 
     // 11. Start optionele Serenity Discord Gateway Client Task
-    let discord_token = std::env::var("DISCORD_BOT_TOKEN").unwrap_or_default();
     if !discord_token.is_empty() && discord_token != "YOUR_DISCORD_BOT_TOKEN_HERE" {
         info!("Discord client opstarten...");
         let intents = GatewayIntents::GUILD_MESSAGES
@@ -277,6 +283,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let rag_clone = rag_searcher.clone();
     let plugins_clone = plugin_mgr.clone();
     let irc_tx_clone = outbound_irc_tx.clone();
+    let avatar_res_clone = avatar_resolver.clone();
     let vision_clone = vision_helper.clone();
     let ai_client_clone = free_token_client.clone();
     let ai_manager_clone = ai_manager.clone();
@@ -353,9 +360,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                                 let chan = msg.source_channel.clone();
                                 let author = msg.author_name.clone();
                                 let content = msg.content.clone();
+                                let avatar_res = avatar_res_clone.clone();
 
                                 tokio::spawn(async move {
-                                    if let Err(e) = disp.send_message(&url, &username, &formatted).await {
+                                    let avatar_url = avatar_res.resolve_avatar(&author).await;
+                                    if let Err(e) = disp.send_message_with_avatar(&url, &username, &formatted, avatar_url.as_deref()).await {
                                         warn!("Fout bij versturen naar Discord Webhook: {}", e);
                                     } else {
                                         // Bi-directionele cache koppeling registreren

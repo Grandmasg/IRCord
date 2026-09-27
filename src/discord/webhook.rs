@@ -8,6 +8,8 @@ use tracing::{error, info, warn};
 struct WebhookPayload<'a> {
     username: &'a str,
     content: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    avatar_url: Option<&'a str>,
 }
 
 pub struct WebhookDispatcher {
@@ -21,9 +23,20 @@ impl WebhookDispatcher {
         }
     }
 
-    /// Verstuurt een chatbericht naar een Discord Webhook met automatische 429 backoff retry
+    /// Verstuurt een chatbericht naar een Discord Webhook met optionele avatar
     pub async fn send_message(&self, webhook_url: &str, username: &str, content: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        let payload = WebhookPayload { username, content };
+        self.send_message_with_avatar(webhook_url, username, content, None).await
+    }
+
+    /// Verstuurt een chatbericht naar een Discord Webhook met automatische 429 backoff retry en optionele profielfoto
+    pub async fn send_message_with_avatar(
+        &self,
+        webhook_url: &str,
+        username: &str,
+        content: &str,
+        avatar_url: Option<&str>,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let payload = WebhookPayload { username, content, avatar_url };
         let max_retries = 3;
 
         for attempt in 0..max_retries {
@@ -57,5 +70,89 @@ impl WebhookDispatcher {
         }
 
         Err("Discord webhook verzending mislukt na 3 pogingen".into())
+    }
+}
+
+use sqlx::{Row, SqlitePool};
+use std::collections::HashMap;
+use std::sync::Arc;
+use tokio::sync::RwLock;
+
+#[derive(Clone)]
+pub struct AvatarResolver {
+    db: SqlitePool,
+    discord_token: String,
+    owner_nick: String,
+    owner_discord_id: u64,
+    cache: Arc<RwLock<HashMap<String, Option<String>>>>,
+    http: Client,
+}
+
+impl AvatarResolver {
+    pub fn new(
+        db: SqlitePool,
+        discord_token: String,
+        owner_nick: String,
+        owner_discord_id: u64,
+    ) -> Self {
+        Self {
+            db,
+            discord_token,
+            owner_nick,
+            owner_discord_id,
+            cache: Arc::new(RwLock::new(HashMap::new())),
+            http: Client::new(),
+        }
+    }
+
+    pub async fn resolve_avatar(&self, irc_nick: &str) -> Option<String> {
+        let key = irc_nick.to_lowercase();
+        {
+            let cache_read = self.cache.read().await;
+            if let Some(cached) = cache_read.get(&key) {
+                return cached.clone();
+            }
+        }
+
+        // 1. Zoek discord_id (owner of gekoppeld via account_links)
+        let discord_id = if irc_nick.eq_ignore_ascii_case(&self.owner_nick) && self.owner_discord_id > 0 {
+            Some(self.owner_discord_id.to_string())
+        } else {
+            let row = sqlx::query("SELECT discord_id FROM account_links WHERE irc_nick = ? COLLATE NOCASE LIMIT 1")
+                .bind(irc_nick)
+                .fetch_optional(&self.db)
+                .await
+                .ok()
+                .flatten();
+
+            row.and_then(|r| r.try_get::<String, _>("discord_id").ok())
+        };
+
+        let mut avatar_url = None;
+
+        // 2. Haal avatar hash op via Discord API
+        if let Some(id) = discord_id {
+            if !self.discord_token.is_empty() {
+                let url = format!("https://discord.com/api/v10/users/{}", id);
+                if let Ok(resp) = self.http.get(&url)
+                    .header("Authorization", format!("Bot {}", self.discord_token))
+                    .header("User-Agent", "IRCord/1.0")
+                    .send()
+                    .await
+                {
+                    if let Ok(json) = resp.json::<serde_json::Value>().await {
+                        if let Some(hash) = json.get("avatar").and_then(|a| a.as_str()) {
+                            let ext = if hash.starts_with("a_") { "gif" } else { "png" };
+                            avatar_url = Some(format!("https://cdn.discordapp.com/avatars/{}/{}.{}", id, hash, ext));
+                        }
+                    }
+                }
+            }
+        }
+
+        // 3. Sla op in cache
+        let mut cache_write = self.cache.write().await;
+        cache_write.insert(key, avatar_url.clone());
+        avatar_url
     }
 }
