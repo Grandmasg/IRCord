@@ -101,6 +101,7 @@ remind_saved = "{author}, deine Erinnerung für '{message}' wurde notiert (in {c
 remind_unit_minute = "Minuten"
 remind_unit_hour = "Stunden"
 remind_unit_day = "Tage"
+remind_triggered = "⏰ Erinnerung für \u0002{author}\u0002: {message}"
 
 quote_usage = "Verwendung: !quote add <Text> | !quote [Suchbegriff] | !quote random"
 quote_saved = "Zitat erfolgreich in der Datenbank gespeichert!"

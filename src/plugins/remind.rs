@@ -1,14 +1,55 @@
 use super::{CommandEvent, Plugin, PluginContext};
+use crate::utils::i18n::LocaleManager;
 use async_trait::async_trait;
 use chrono::{Duration as ChronoDuration, Utc};
+use sqlx::SqlitePool;
 
 pub struct RemindPlugin;
+
+impl RemindPlugin {
+    /// Achtergrondcontrole: zoekt reminders die nu getriggerd moeten worden
+    pub async fn check_and_trigger_reminders(
+        pool: &SqlitePool,
+        locale: &LocaleManager,
+    ) -> Result<Vec<(String, String, String, String)>, Box<dyn std::error::Error + Send + Sync>> {
+        let now = Utc::now().timestamp();
+        let rows: Vec<(i64, String, String, String, String)> = sqlx::query_as(
+            r#"
+            SELECT id, author, channel, platform, message
+            FROM reminders
+            WHERE trigger_at <= ? AND delivered_at IS NULL
+            ORDER BY id ASC
+            LIMIT 25
+            "#,
+        )
+        .bind(now)
+        .fetch_all(pool)
+        .await?;
+
+        let mut triggers = Vec::new();
+
+        for (id, author, channel, platform, message) in rows {
+            let _ = sqlx::query("UPDATE reminders SET delivered_at = CURRENT_TIMESTAMP WHERE id = ?")
+                .bind(id)
+                .execute(pool)
+                .await;
+
+            let formatted = locale.tf(
+                "remind_triggered",
+                &[("author", &author), ("message", &message)],
+            );
+            triggers.push((channel, platform, author, formatted));
+        }
+
+        Ok(triggers)
+    }
+}
 
 #[async_trait]
 impl Plugin for RemindPlugin {
     fn name(&self) -> &'static str { "remind" }
     fn triggers(&self) -> &[&'static str] { &["remindme", "remind"] }
-    fn help(&self) -> &'static str { "!remindme <getal><m/h/d> <bericht> - Stelt een herinnering in (bijv. !remindme 30m pizza)" }
+    fn help(&self) -> &'static str { "!remindme <getal><m/h/d> <bericht> - Stelt een actieve herinnering in (bijv. !remindme 30m pizza)" }
 
     async fn on_command(&self, ctx: &PluginContext, cmd: &CommandEvent) -> Result<Option<String>, Box<dyn std::error::Error + Send + Sync>> {
         let args = cmd.args.trim();
@@ -35,21 +76,19 @@ impl Plugin for RemindPlugin {
         };
 
         let trigger_at = Utc::now() + duration;
-        let formatted_time = trigger_at.format("%H:%M:%S UTC").to_string();
+        let trigger_at_epoch = trigger_at.timestamp();
 
-        let reminder_tag = if ctx.locale.is_dutch() { "HERINNERING" } else { "REMINDER" };
-        let reminder_sender = if ctx.locale.is_dutch() { "Herinnering" } else { "Reminder" };
-        let reminder_note = format!("[{} {}]: {}", reminder_tag, formatted_time, message);
-        sqlx::query!(
+        sqlx::query(
             r#"
-            INSERT INTO memos (recipient, sender, platform, message)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO reminders (author, channel, platform, message, trigger_at)
+            VALUES (?, ?, ?, ?, ?)
             "#,
-            cmd.author,
-            reminder_sender,
-            cmd.platform,
-            reminder_note
         )
+        .bind(&cmd.author)
+        .bind(&cmd.channel)
+        .bind(&cmd.platform)
+        .bind(message)
+        .bind(trigger_at_epoch)
         .execute(&ctx.db)
         .await?;
 

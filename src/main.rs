@@ -546,6 +546,72 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         }
     });
 
+    // 14. Achtergrondtaak: Geautomatiseerde herinneringen (!remind / !remindme)
+    let remind_pool = pool.clone();
+    let remind_irc_tx = outbound_irc_tx.clone();
+    let remind_router = bridge_router.clone();
+    let remind_dispatcher = webhook_dispatcher.clone();
+    let remind_locale = locale_manager.clone();
+    let remind_shutdown = shutdown_token.clone();
+
+    tokio::spawn(async move {
+        // Controleer elke 5 seconden op actieve herinneringen
+        let mut interval = tokio::time::interval(Duration::from_secs(5));
+        interval.tick().await;
+
+        loop {
+            tokio::select! {
+                _ = remind_shutdown.cancelled() => {
+                    info!("Herinneringen achtergrondtaak afgesloten.");
+                    break;
+                }
+                _ = interval.tick() => {
+                    match RemindPlugin::check_and_trigger_reminders(&remind_pool, &remind_locale).await {
+                        Ok(reminders) => {
+                            for (channel, _platform, author, message) in reminders {
+                                info!("⏰ Herinnering afleveren voor {} in {}", author, channel);
+
+                                let (target_irc_channel, target_discord_webhook) = if let Ok(discord_chan_id) = channel.parse::<u64>() {
+                                    if let Some(mapping) = remind_router.get_irc_destination(discord_chan_id) {
+                                        (Some(mapping.irc_channel.clone()), Some(mapping.discord_webhook_url.clone()))
+                                    } else {
+                                        (None, None)
+                                    }
+                                } else {
+                                    let webhook = remind_router.get_discord_destination(&channel).map(|m| m.discord_webhook_url.clone());
+                                    (Some(channel.clone()), webhook)
+                                };
+
+                                if let Some(irc_chan) = target_irc_channel {
+                                    let _ = remind_irc_tx.send(BridgeMessage {
+                                        source_platform: Platform::Irc,
+                                        source_channel: irc_chan,
+                                        author_name: "IRCord".into(),
+                                        author_id: None,
+                                        content: message.clone(),
+                                        reply_to: None,
+                                        is_action: false,
+                                    }).await;
+                                }
+
+                                if let Some(webhook_url) = target_discord_webhook {
+                                    let _ = remind_dispatcher.send_message(
+                                        &webhook_url,
+                                        "IRCord",
+                                        &message,
+                                    ).await;
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            error!("Fout bij controleren van herinneringen: {:?}", e);
+                        }
+                    }
+                }
+            }
+        }
+    });
+
     info!("IRCord Daemon succesvol gestart en operationeel!");
 
     // 13. Wacht op shutdown signaal (Ctrl+C of SIGTERM)

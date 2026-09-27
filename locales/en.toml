@@ -101,6 +101,7 @@ remind_saved = "{author}, your reminder for '{message}' has been set (in {count}
 remind_unit_minute = "minute(s)"
 remind_unit_hour = "hour(s)"
 remind_unit_day = "day(s)"
+remind_triggered = "⏰ Reminder for \u0002{author}\u0002: {message}"
 
 quote_usage = "Usage: !quote add <text> | !quote [term] | !quote random"
 quote_saved = "Quote successfully stored in the database!"

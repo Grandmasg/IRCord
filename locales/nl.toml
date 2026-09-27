@@ -101,6 +101,7 @@ remind_saved = "{author}, je herinnering voor '{message}' staat genoteerd (over 
 remind_unit_minute = "minuten"
 remind_unit_hour = "uur"
 remind_unit_day = "dag(en)"
+remind_triggered = "⏰ Herinnering voor \u0002{author}\u0002: {message}"
 
 quote_usage = "Gebruik: !quote add <tekst> | !quote [zoekterm] | !quote random"
 quote_saved = "Citaat succesvol opgeslagen in de database!"
