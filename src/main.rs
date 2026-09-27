@@ -568,38 +568,35 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 _ = interval.tick() => {
                     match RemindPlugin::check_and_trigger_reminders(&remind_pool, &remind_locale).await {
                         Ok(reminders) => {
-                            for (channel, _platform, author, message) in reminders {
-                                info!("⏰ Herinnering afleveren voor {} in {}", author, channel);
+                            for (channel, platform, author, message) in reminders {
+                                info!("⏰ Herinnering afleveren voor {} in {} ({})", author, channel, platform);
 
-                                let (target_irc_channel, target_discord_webhook) = if let Ok(discord_chan_id) = channel.parse::<u64>() {
-                                    if let Some(mapping) = remind_router.get_irc_destination(discord_chan_id) {
-                                        (Some(mapping.irc_channel.clone()), Some(mapping.discord_webhook_url.clone()))
-                                    } else {
-                                        (None, None)
-                                    }
-                                } else {
-                                    let webhook = remind_router.get_discord_destination(&channel).map(|m| m.discord_webhook_url.clone());
-                                    (Some(channel.clone()), webhook)
-                                };
-
-                                if let Some(irc_chan) = target_irc_channel {
+                                if platform.eq_ignore_ascii_case("irc") {
+                                    // Alleen naar het specifieke IRC-kanaal sturen waar het gevraagd is
                                     let _ = remind_irc_tx.send(BridgeMessage {
                                         source_platform: Platform::Irc,
-                                        source_channel: irc_chan,
+                                        source_channel: channel.clone(),
                                         author_name: "IRCord".into(),
                                         author_id: None,
                                         content: message.clone(),
                                         reply_to: None,
                                         is_action: false,
                                     }).await;
-                                }
+                                } else if platform.eq_ignore_ascii_case("discord") {
+                                    // Alleen naar Discord sturen waar het gevraagd is
+                                    let webhook_opt = if let Ok(discord_chan_id) = channel.parse::<u64>() {
+                                        remind_router.get_irc_destination(discord_chan_id).map(|m| m.discord_webhook_url.clone())
+                                    } else {
+                                        remind_router.get_discord_destination(&channel).map(|m| m.discord_webhook_url.clone())
+                                    };
 
-                                if let Some(webhook_url) = target_discord_webhook {
-                                    let _ = remind_dispatcher.send_message(
-                                        &webhook_url,
-                                        "IRCord",
-                                        &message,
-                                    ).await;
+                                    if let Some(webhook_url) = webhook_opt {
+                                        let _ = remind_dispatcher.send_message(
+                                            &webhook_url,
+                                            "IRCord",
+                                            &message,
+                                        ).await;
+                                    }
                                 }
                             }
                         }
