@@ -9,6 +9,7 @@ FROM rust:alpine AS builder
 RUN apk add --no-cache \
     musl-dev \
     sqlite-dev \
+    sqlite \
     openssl-dev \
     openssl-libs-static \
     pkgconfig \
@@ -19,17 +20,20 @@ WORKDIR /usr/src/ircord
 
 # Kopieer dependency manifests om layers efficiënt te cachen
 COPY Cargo.toml Cargo.lock* ./
-RUN mkdir -p src migrations && \
+RUN mkdir -p src && \
     echo "fn main() {}" > src/main.rs && \
     cargo build --release || true && \
-    rm -rf src
+    rm -rf src target/release/ircord target/release/deps/ircord*
 
 # Kopieer de daadwerkelijke broncode en migraties
 COPY . .
 
-# Compileer geoptimaliseerde release binary
-ENV SQLX_OFFLINE=true
-RUN cargo build --release --locked || cargo build --release
+# Compileer geoptimaliseerde release binary met compile-time SQLite schema validatie
+RUN sqlite3 /tmp/ircord.db < migrations/20260908_init.sql && \
+    sqlite3 /tmp/ircord.db < migrations/20260925_user_preferences.sql
+ENV DATABASE_URL="sqlite:///tmp/ircord.db"
+ENV SQLX_OFFLINE=false
+RUN touch src/main.rs && cargo build --release
 
 # STAGE 2: Minimale Productie Runtime (< 25 MB)
 FROM alpine:latest AS runtime

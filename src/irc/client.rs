@@ -61,9 +61,9 @@ impl IrcClient {
     pub async fn run(mut self) {
         let server = std::env::var("IRC_SERVER").unwrap_or_else(|_| "irc.libera.chat".into());
         let port: u16 = std::env::var("IRC_PORT")
-            .unwrap_or_else(|_| "6697".into())
+            .unwrap_or_else(|_| "6667".into())
             .parse()
-            .unwrap_or(6697);
+            .unwrap_or(6667);
         let nick = std::env::var("IRC_NICK").unwrap_or_else(|_| "IRCordBot".into());
 
         info!("IRC Task gestart. Verbinden met {}:{} (Nick: {})...", server, port, nick);
@@ -97,8 +97,8 @@ impl IrcClient {
         let (reader, mut writer) = tokio::io::split(stream);
         let mut buf_reader = BufReader::new(reader);
 
-        // SASL Credentials uit environment
-        let sasl_pass = std::env::var("IRC_SASL_PASS").ok();
+        // SASL Credentials uit environment (alleen als wachtwoord niet leeg is)
+        let sasl_pass = std::env::var("IRC_SASL_PASS").ok().filter(|s| !s.trim().is_empty());
         let sasl_user = std::env::var("IRC_SASL_USER").unwrap_or_else(|_| nick.to_string());
         let has_sasl = sasl_pass.is_some();
 
@@ -129,10 +129,10 @@ impl IrcClient {
                         continue;
                     }
 
-                    // Ping-Pong keepalive
+                    // Ping-Pong keepalive (ondersteunt zowel 'PING token' als 'PING :token')
                     if raw.starts_with("PING") {
-                        let token = raw.split_whitespace().nth(1).unwrap_or("");
-                        writer.write_all(format!("PONG {}\r\n", token).as_bytes()).await?;
+                        let token = raw.split_whitespace().nth(1).unwrap_or("").trim_start_matches(':');
+                        writer.write_all(format!("PONG :{}\r\n", token).as_bytes()).await?;
                         continue;
                     }
 
@@ -143,7 +143,13 @@ impl IrcClient {
                         continue;
                     }
 
-                    if raw.starts_with("AUTHENTICATE +") {
+                    if raw.contains("CAP") && raw.contains("NAK") {
+                        warn!("Server weigert CAP sasl. Doorgaan met directe login...");
+                        writer.write_all(format!("CAP END\r\nNICK {}\r\nUSER {} 0 * :IRCord Hybrid Bot\r\n", nick, nick).as_bytes()).await?;
+                        continue;
+                    }
+
+                    if raw.starts_with("AUTHENTICATE +") || raw.starts_with("AUTHENTICATE :+") {
                         if let Some(ref pass) = sasl_pass {
                             info!("SASL challenge ontvangen. Verzenden geëncodeerde credentials...");
                             let mut payload = Vec::new();
