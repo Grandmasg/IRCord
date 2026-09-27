@@ -143,7 +143,7 @@ Alle commando's werken standaard met zowel een uitroepteken (`!`) als een punt (
 | **Quotes** | `!quote`, `!q` | Bewaar en herinner legendarische kanaalquotes. | `!quote add <tekst>`, `!quote random` |
 | **Karma** | `!karma`, `++`, `--` | Houd karma-scores bij voor onderwerpen en nicks. | `rust++`, `bugs--`, `!karma rust` |
 | **Poll** | `!poll` | Start een interactieve kanaalpeiling met meerkeuzeopties. | `!poll Pizza vanavond? \| Ja \| Nee` |
-| **Remind** | `!remind`, `!remindme` | Stelt een timer-herinnering in. | `!remind 10m Pizza uit de oven!` |
+| **Remind** | `!remind`, `!reminder`, `!remindme` | Stelt een timer-herinnering in. | `!remind 10m Pizza uit de oven!` |
 | **Alias** | `!alias` | Beheer aangepaste kanaal-aliassen. | `!alias add docs https://rust-lang.org` |
 | **Tell (Memos)** | `!tell`, `!memo`, `!note` | Laat een offline bericht achter voor iemand; wordt automatisch bezorgd zodra diegene spreekt. | `!tell Klaas vergeet vanavond de server-backup niet` |
 | **YouTube** | `!yt`, `!youtube` | Zoekt YouTube video's op of inspecteert links automatisch via oEmbed (titel, uploader, link, omschrijving). | `!yt lofi hip hop beats` |

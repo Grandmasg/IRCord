@@ -48,8 +48,8 @@ impl RemindPlugin {
 #[async_trait]
 impl Plugin for RemindPlugin {
     fn name(&self) -> &'static str { "remind" }
-    fn triggers(&self) -> &[&'static str] { &["remindme", "remind"] }
-    fn help(&self) -> &'static str { "!remindme <getal><m/h/d> <bericht> - Stelt een actieve herinnering in (bijv. !remindme 30m pizza)" }
+    fn triggers(&self) -> &[&'static str] { &["remindme", "remind", "reminder"] }
+    fn help(&self) -> &'static str { "!remind <getal><m/h/d> <bericht> - Stelt een actieve herinnering in (bijv. !remind 30m pizza)" }
 
     async fn on_command(&self, ctx: &PluginContext, cmd: &CommandEvent) -> Result<Option<String>, Box<dyn std::error::Error + Send + Sync>> {
         let args = cmd.args.trim();

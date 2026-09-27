@@ -154,7 +154,7 @@ All commands accept either an exclamation mark (`!`) or a period (`.`) by defaul
 | **Quotes** | `!quote`, `!q` | Save and retrieve memorable channel quotes. | `!quote add <text>`, `!quote random` |
 | **Karma** | `!karma`, `++`, `--` | Tracks karma scores for subjects and nicknames. | `rust++`, `bugs--`, `!karma rust` |
 | **Poll** | `!poll` | Interactive multi-choice channel poll. | `!poll Pizza tonight? \| Yes \| No` |
-| **Remind** | `!remind`, `!remindme` | Sets a timer reminder. | `!remind 10m Check server backup!` |
+| **Remind** | `!remind`, `!reminder`, `!remindme` | Sets a timer reminder. | `!remind 10m Check server backup!` |
 | **Alias** | `!alias` | Custom channel alias management. | `!alias add docs https://rust-lang.org` |
 | **Birthdays** | `!bday`, `!verjaardag` | Register birthdays (`!bday set DD-MM[-YYYY]`), view upcoming birthdays (`!bday next`), or check a friend's date (`!bday nick`). The bot automatically sends morning greetings with age and cake! | `!bday set 24-09`, `!bday next`, `!bday Alice` |
 | **Admin & Logs**| `!status`, `!ping`, `!stats` | Reports uptime, active plugins, memory, and database metrics. | `!status` |
