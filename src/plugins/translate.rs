@@ -16,6 +16,31 @@ struct MyMemoryData {
     translated_text: Option<String>,
 }
 
+fn resolve_lang(input: &str) -> Option<(&'static str, &'static str)> {
+    match input.trim().to_lowercase().as_str() {
+        "nl" | "ned" | "nld" | "dutch" | "nederlands" => Some(("NL", "Dutch")),
+        "de" | "ger" | "deu" | "german" | "duits" | "deutsch" => Some(("DE", "German")),
+        "en" | "eng" | "english" | "engels" => Some(("EN", "English")),
+        "es" | "sp" | "spa" | "spanish" | "spaans" | "español" => Some(("ES", "Spanish")),
+        "fr" | "fra" | "fre" | "french" | "frans" | "français" => Some(("FR", "French")),
+        "it" | "ita" | "italian" | "italiaans" | "italiano" => Some(("IT", "Italian")),
+        "pt" | "por" | "portuguese" | "portugees" => Some(("PT", "Portuguese")),
+        "ru" | "rus" | "russian" | "russisch" => Some(("RU", "Russian")),
+        "ja" | "jp" | "jpn" | "japanese" | "japans" => Some(("JA", "Japanese")),
+        "zh" | "cn" | "chi" | "chinese" | "chinees" => Some(("ZH", "Chinese")),
+        "pl" | "pol" | "polish" | "pools" => Some(("PL", "Polish")),
+        "sv" | "se" | "swe" | "swedish" | "zweeds" => Some(("SV", "Swedish")),
+        "da" | "dk" | "dan" | "danish" | "deens" => Some(("DA", "Danish")),
+        "fi" | "fin" | "finnish" | "fins" => Some(("FI", "Finnish")),
+        "no" | "nor" | "norwegian" | "noors" => Some(("NO", "Norwegian")),
+        "tr" | "tur" | "turkish" | "turks" => Some(("TR", "Turkish")),
+        "uk" | "ukr" | "ukrainian" | "oekraïens" => Some(("UK", "Ukrainian")),
+        "ar" | "ara" | "arabic" | "arabisch" => Some(("AR", "Arabic")),
+        "el" | "gr" | "gre" | "greek" | "grieks" => Some(("EL", "Greek")),
+        _ => None,
+    }
+}
+
 #[async_trait]
 impl Plugin for TranslatePlugin {
     fn name(&self) -> &'static str {
@@ -27,7 +52,7 @@ impl Plugin for TranslatePlugin {
     }
 
     fn help(&self) -> &'static str {
-        "!translate [langpair] <text> / !tr [taalpaar] <tekst> - Translates text"
+        "!translate [taalcode/taalpaar] <tekst> - Vertaalt tekst (bijv. !tr de Hallo, !tr nl:en Hoi, !tr sp Buenos días)"
     }
 
     async fn on_command(
@@ -41,31 +66,42 @@ impl Plugin for TranslatePlugin {
 
         if args.is_empty() {
             let usage = if is_dutch {
-                "Gebruik: !tr [van:naar] <tekst> (bijv: !tr en:nl Hello world)"
+                "Gebruik: !tr [doeltaal of van:naar] <tekst> (bijv: !tr de Guten Tag, !tr en:nl Hello world, !tr sp Hola)"
             } else {
-                "Usage: !translate [from:to] <text> (e.g. !translate en:nl Hello world)"
+                "Usage: !translate [target or from:to] <text> (e.g. !tr de Guten Tag, !tr en:nl Hello world, !tr sp Hola)"
             };
             return Ok(Some(usage.into()));
         }
 
-        // Parse optional language pair: "en:nl", "nl:en", "de:nl", "es:en", etc.
-        let (lang_from, lang_to, text_to_translate) = if let Some((first, rest)) = args.split_once(' ') {
+        // Parse taalopties: "nl:de", "de", "en", "sp", "es", "fr", etc.
+        let (from_code, from_name, to_code, to_name, text_to_translate) = if let Some((first, rest)) = args.split_once(' ') {
             if first.contains(':') {
                 let mut parts = first.splitn(2, ':');
-                let from = parts.next().unwrap_or("auto").to_lowercase();
-                let to = parts.next().unwrap_or(default_target).to_lowercase();
-                (from, to, rest.trim())
-            } else if first.len() == 2 && (first == "en" || first == "nl" || first == "de" || first == "fr" || first == "es") {
-                ("auto".to_string(), first.to_lowercase(), rest.trim())
+                let raw_from = parts.next().unwrap_or("auto");
+                let raw_to = parts.next().unwrap_or(default_target);
+
+                let (f_code, f_name) = resolve_lang(raw_from).unwrap_or(("AUTO", "auto-detected language"));
+                let (t_code, t_name) = resolve_lang(raw_to).unwrap_or_else(|| {
+                    resolve_lang(default_target).unwrap_or(("NL", "Dutch"))
+                });
+                (f_code, f_name, t_code, t_name, rest.trim())
+            } else if let Some((code, name)) = resolve_lang(first) {
+                ("AUTO", "auto-detected language", code, name, rest.trim())
             } else {
-                ("auto".to_string(), default_target.to_string(), args)
+                let (def_code, def_name) = resolve_lang(default_target).unwrap_or(("NL", "Dutch"));
+                ("AUTO", "auto-detected language", def_code, def_name, args)
             }
         } else {
-            ("auto".to_string(), default_target.to_string(), args)
+            let (def_code, def_name) = resolve_lang(default_target).unwrap_or(("NL", "Dutch"));
+            ("AUTO", "auto-detected language", def_code, def_name, args)
         };
 
         if text_to_translate.is_empty() {
-            let usage_sub = if is_dutch { "Gebruik: !tr [van:naar] <tekst>" } else { "Usage: !tr [from:to] <text>" };
+            let usage_sub = if is_dutch {
+                "Gebruik: !tr [doeltaal] <tekst>"
+            } else {
+                "Usage: !tr [target] <text>"
+            };
             return Ok(Some(usage_sub.into()));
         }
 
@@ -85,11 +121,11 @@ impl Plugin for TranslatePlugin {
 
                 let mut body = serde_json::json!({
                     "text": [text_to_translate],
-                    "target_lang": lang_to.to_uppercase(),
+                    "target_lang": to_code,
                 });
 
-                if lang_from != "auto" {
-                    body["source_lang"] = serde_json::json!(lang_from.to_uppercase());
+                if from_code != "AUTO" {
+                    body["source_lang"] = serde_json::json!(from_code);
                 }
 
                 if let Ok(resp) = ctx
@@ -116,7 +152,7 @@ impl Plugin for TranslatePlugin {
                                 return Ok(Some(format!(
                                     "🌐 [{} -> {}] {}",
                                     deepl_label,
-                                    lang_to.to_uppercase(),
+                                    to_code,
                                     item.text.trim()
                                 )));
                             }
@@ -126,64 +162,56 @@ impl Plugin for TranslatePlugin {
             }
         }
 
-        // 2. Probeer de lokale FlashML FreeToken AI indien beschikbaar en budget toereikend
+        // 2. Probeer de lokale FlashML FreeToken AI (Ollama Qwen2.5) met duidelijke instructie
         let current_model = ctx.ai_manager.get_model();
         if ctx.ai_manager.can_consume(80) {
             let prompt = format!(
-                "You are a professional translator. Translate the following text into {} (source language: {}). Output ONLY the clean translated sentence without any introduction, explanations, quotes, or conversational remarks:\n{}",
-                lang_to, lang_from, text_to_translate
+                "You are a professional translator. Translate the following text into {} (from {}). Output ONLY the direct translated text in {}, without quotes, explanations, or notes. Do NOT repeat the input sentence if it is not in {}:\n\n{}",
+                to_name, from_name, to_name, to_name, text_to_translate
             );
 
-            match ctx.ai_client.ask("Translator", &prompt, Some(&current_model)).await {
-                Ok(reply) => {
-                    let clean = reply.trim().trim_matches('"').to_string();
-                    if !clean.is_empty() {
-                        ctx.ai_manager.record_consumption(60);
-                        return Ok(Some(format!("🌐 [{} -> {}] {}", ai_label, lang_to.to_uppercase(), clean)));
-                    }
-                }
-                Err(_) => {
-                    // Fallback to web translation
+            if let Ok(reply) = ctx.ai_client.ask("Translator", &prompt, Some(&current_model)).await {
+                let clean = reply.trim().trim_matches('"').trim().to_string();
+                // Weiger antwoorden die leeg zijn óf een letterlijke echo zijn van de bronsleutel
+                if !clean.is_empty() && (!clean.eq_ignore_ascii_case(text_to_translate) || to_name == from_name) {
+                    ctx.ai_manager.record_consumption(60);
+                    return Ok(Some(format!("🌐 [{} -> {}] {}", ai_label, to_code, clean)));
                 }
             }
         }
 
         // 3. Fallback naar MyMemory Translation API
-        let pair = format!("{}|{}", if lang_from == "auto" { "en" } else { &lang_from }, lang_to);
-        let encoded_text = urlencoding_simple(text_to_translate);
-        let url = format!(
-            "https://api.mymemory.translated.net/get?q={}&langpair={}",
-            encoded_text, pair
-        );
+        let mymemory_from = if from_code == "AUTO" {
+            if to_code == "NL" { "en" } else { "nl" }
+        } else {
+            &from_code.to_lowercase()
+        };
+        let pair = format!("{}|{}", mymemory_from, to_code.to_lowercase());
 
         let resp = ctx
             .http
-            .get(&url)
+            .get("https://api.mymemory.translated.net/get")
+            .query(&[("q", text_to_translate), ("langpair", &pair)])
             .header("User-Agent", "IRCordBot/1.0 (translation client)")
             .send()
             .await?;
 
-        if !resp.status().is_success() {
-            return Ok(Some("🌐 Kon de vertaling op dit moment niet uitvoeren.".into()));
-        }
-
-        let data: MyMemoryResponse = resp.json().await?;
-        if let Some(res) = data.response_data {
-            if let Some(trans) = res.translated_text {
-                let clean = trans.replace("&quot;", "\"").replace("&#39;", "'").replace("&amp;", "&");
-                return Ok(Some(format!(
-                    "🌐 [{} -> {}] {}",
-                    web_label,
-                    lang_to.to_uppercase(),
-                    clean
-                )));
+        if resp.status().is_success() {
+            if let Ok(data) = resp.json::<MyMemoryResponse>().await {
+                if let Some(res) = data.response_data {
+                    if let Some(trans) = res.translated_text {
+                        let clean = trans.replace("&quot;", "\"").replace("&#39;", "'").replace("&amp;", "&");
+                        return Ok(Some(format!(
+                            "🌐 [{} -> {}] {}",
+                            web_label,
+                            to_code,
+                            clean
+                        )));
+                    }
+                }
             }
         }
 
         Ok(Some("🌐 Geen vertaling kunnen vinden voor deze invoer.".into()))
     }
-}
-
-fn urlencoding_simple(s: &str) -> String {
-    s.trim().replace(' ', "%20")
 }
