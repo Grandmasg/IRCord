@@ -132,7 +132,7 @@ Open `config.toml` and configure your general settings, command prefixes, channe
 language = "en" # Default chat output language: "en", "nl", "de", "fr", "es"
 command_prefixes = ["!", "."] # Recognized command prefixes (e.g. !help, .help)
 bot_owner_discord_id = 123456789012345678
-bot_owner_irc_nick = "Kuuke"
+bot_owner_irc_nick = "YourNick"
 http_port = 9090
 pastebin_threshold_lines = 4
 admin_channel_irc = "#bot-logs"
@@ -153,7 +153,7 @@ discord_webhook_url = "https://discord.com/api/webhooks/..."
 # language = "en"
 
 [whatpulse]
-team_name = "Team de Apen"
+team_name = "Deapen"
 api_url = "https://whatpulse.org/api/v1"
 poll_interval_seconds = 180
 cache_ttl_seconds = 300

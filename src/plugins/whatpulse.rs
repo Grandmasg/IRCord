@@ -24,7 +24,7 @@ pub struct WpTeamStats {
 }
 
 fn default_team_name() -> String {
-    "Team de Apen".to_string()
+    "Deapen".to_string()
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -115,15 +115,56 @@ struct WpClientStats {
     uptime_formatted: Option<String>,
 }
 
+use std::sync::atomic::{AtomicUsize, Ordering};
+
 pub struct WhatPulsePlugin {
     cached_data: Mutex<Option<(WpResponse, Instant)>>,
+    key_index: AtomicUsize,
 }
 
 impl WhatPulsePlugin {
     pub fn new() -> Self {
         Self {
             cached_data: Mutex::new(None),
+            key_index: AtomicUsize::new(0),
         }
+    }
+
+    /// Verzamelt alle beschikbare WhatPulse API-sleutels (via config.toml en/of WHATPULSE_API_KEY)
+    fn get_api_keys(&self, ctx: &PluginContext) -> Vec<String> {
+        let mut keys = Vec::new();
+        for k in &ctx.config.whatpulse.api_keys {
+            let trimmed = k.trim();
+            if !trimmed.is_empty() && !keys.contains(&trimmed.to_string()) {
+                keys.push(trimmed.to_string());
+            }
+        }
+        if let Some(ref single) = ctx.config.whatpulse.api_key {
+            let trimmed = single.trim();
+            if !trimmed.is_empty() && !keys.contains(&trimmed.to_string()) {
+                keys.push(trimmed.to_string());
+            }
+        }
+        if let Ok(env_keys) = std::env::var("WHATPULSE_API_KEY") {
+            for part in env_keys.split(',') {
+                let trimmed = part.trim();
+                if !trimmed.is_empty() && !keys.contains(&trimmed.to_string()) {
+                    keys.push(trimmed.to_string());
+                }
+            }
+        }
+        keys
+    }
+
+    /// Geeft de geconfigureerde Client API URL terug (lokaal op de computer of LAN)
+    fn get_client_url(&self, ctx: &PluginContext) -> String {
+        if let Some(ref url) = ctx.config.whatpulse.client_url {
+            let trimmed = url.trim();
+            if !trimmed.is_empty() {
+                return trimmed.to_string();
+            }
+        }
+        std::env::var("WHATPULSE_CLIENT_URL").unwrap_or_else(|_| "http://localhost:3490/v1/account-totals".to_string())
     }
 
     async fn fetch_stats(&self, ctx: &PluginContext) -> Result<WpResponse, Box<dyn std::error::Error + Send + Sync>> {
@@ -140,79 +181,107 @@ impl WhatPulsePlugin {
             }
         }
 
-        // Fetch van API
-        let url = &ctx.config.whatpulse.api_url;
-        debug!("WhatPulse API aanroepen: {}", url);
+        // Fetch via officiële WhatPulse Web API v1 (zie https://whatpulse.org/help/api/intro)
+        let keys = self.get_api_keys(ctx);
+        if keys.is_empty() {
+            return Err("Geen WhatPulse API sleutel geconfigureerd (stel 'api_keys' of 'api_key' in via config/compose of WHATPULSE_API_KEY).".into());
+        }
 
-        let resp: WpResponse = if url.contains("whatpulse.org/api/v1") {
-            // Officiële WhatPulse Web API v1 (zie https://whatpulse.org/help/api/web/intro)
-            let api_key = std::env::var("WHATPULSE_API_KEY").unwrap_or_default();
-            let team_name = &ctx.config.whatpulse.team_name;
+        let team_name = &ctx.config.whatpulse.team_name;
+        let mut last_err = String::new();
+        let mut successful_resp = None;
+
+        // Probeer beschikbare keys (met rotatie en fallback bij 429 rate limit)
+        let start_idx = self.key_index.fetch_add(1, Ordering::Relaxed) % keys.len();
+        for i in 0..keys.len() {
+            let current_key = &keys[(start_idx + i) % keys.len()];
             let search_url = format!("https://whatpulse.org/api/v1/teams?search={}", team_name);
 
-            let search_resp = ctx
+            let search_resp = match ctx
                 .http
                 .get(&search_url)
-                .bearer_auth(&api_key)
+                .bearer_auth(current_key)
                 .timeout(Duration::from_secs(8))
                 .send()
-                .await?;
+                .await
+            {
+                Ok(r) => r,
+                Err(e) => {
+                    last_err = format!("Verbindingsfout naar WhatPulse: {}", e);
+                    continue;
+                }
+            };
+
+            if search_resp.status() == 429 || search_resp.status() == 401 {
+                last_err = format!("WhatPulse API status {} (rate limit of autorisatie met key #{})", search_resp.status(), (start_idx + i) % keys.len() + 1);
+                continue;
+            }
 
             if !search_resp.status().is_success() {
-                return Err(format!("WhatPulse v1 API fout (status {}). Controleer WHATPULSE_API_KEY in .env.", search_resp.status()).into());
+                last_err = format!("WhatPulse v1 API fout (status {})", search_resp.status());
+                continue;
             }
 
-            let search_data: WpApiTeamSearchResponse = search_resp.json().await?;
-            let team_summary = search_data
-                .teams
-                .and_then(|t| t.into_iter().next())
-                .ok_or_else(|| format!("Team '{}' niet gevonden op WhatPulse", team_name))?;
+            let search_data: WpApiTeamSearchResponse = match search_resp.json().await {
+                Ok(d) => d,
+                Err(e) => {
+                    last_err = format!("Fout bij parsen team response: {}", e);
+                    continue;
+                }
+            };
+
+            let team_summary = match search_data.teams.and_then(|t| t.into_iter().next()) {
+                Some(s) => s,
+                None => return Err(format!("Team '{}' niet gevonden op WhatPulse", team_name).into()),
+            };
 
             let show_url = format!("https://whatpulse.org/api/v1/teams/{}", team_summary.id);
-            let show_resp = ctx
+            let show_resp = match ctx
                 .http
                 .get(&show_url)
-                .bearer_auth(&api_key)
+                .bearer_auth(current_key)
                 .timeout(Duration::from_secs(8))
                 .send()
-                .await?;
-
-            let show_data: WpApiTeamShowResponse = show_resp.json().await?;
-            let details = show_data.team.ok_or_else(|| "Geen teamdetails ontvangen van WhatPulse API")?;
-
-            WpResponse {
-                team: Some(WpTeamStats {
-                    name: details.name.unwrap_or_else(|| team_name.clone()),
-                    rank: details.rank.unwrap_or(0),
-                    members: details.members.unwrap_or(0),
-                    keys: details.keys.unwrap_or(0),
-                    clicks: details.clicks.unwrap_or(0),
-                    download_mb: details.download.unwrap_or(0) / (1024 * 1024),
-                    upload_mb: details.upload.unwrap_or(0) / (1024 * 1024),
-                }),
-                top_members: Vec::new(),
-            }
-        } else {
-            // Custom endpoint (bijv. grandmasg.nl of lokale proxy)
-            let mut req = ctx.http.get(url).timeout(Duration::from_secs(10));
-            if let Ok(key) = std::env::var("WHATPULSE_API_KEY") {
-                let k = key.trim();
-                if !k.is_empty() {
-                    req = req.bearer_auth(k);
-                }
-            }
-            match req.send().await {
-                Ok(r) if r.status().is_success() => r.json().await?,
-                Ok(r) => {
-                    error!("WhatPulse API gaf statuscode {}", r.status());
-                    return Err(format!("WhatPulse server error: {}", r.status()).into());
-                }
+                .await
+            {
+                Ok(r) => r,
                 Err(e) => {
-                    error!("WhatPulse verbinding mislukt: {}", e);
-                    return Err(e.into());
+                    last_err = format!("Fout bij ophalen team details: {}", e);
+                    continue;
                 }
+            };
+
+            if !show_resp.status().is_success() {
+                last_err = format!("WhatPulse v1 team details fout (status {})", show_resp.status());
+                continue;
             }
-        };
+
+            let show_data: WpApiTeamShowResponse = match show_resp.json().await {
+                Ok(d) => d,
+                Err(e) => {
+                    last_err = format!("Fout bij parsen team details: {}", e);
+                    continue;
+                }
+            };
+
+            if let Some(details) = show_data.team {
+                successful_resp = Some(WpResponse {
+                    team: Some(WpTeamStats {
+                        name: details.name.unwrap_or_else(|| team_name.clone()),
+                        rank: details.rank.unwrap_or(0),
+                        members: details.members.unwrap_or(0),
+                        keys: details.keys.unwrap_or(0),
+                        clicks: details.clicks.unwrap_or(0),
+                        download_mb: details.download.unwrap_or(0) / (1024 * 1024),
+                        upload_mb: details.upload.unwrap_or(0) / (1024 * 1024),
+                    }),
+                    top_members: Vec::new(),
+                });
+                break;
+            }
+        }
+
+        let resp: WpResponse = successful_resp.ok_or_else(|| format!("WhatPulse team data kon niet worden opgehaald: {}", last_err))?;
 
         // Update cache
         {
@@ -228,29 +297,32 @@ impl WhatPulsePlugin {
         ctx: &PluginContext,
         target: &str,
     ) -> Result<Option<String>, Box<dyn std::error::Error + Send + Sync>> {
-        // 1. Probeer officiële WhatPulse Web API v1 als WHATPULSE_API_KEY is geconfigureerd
-        if let Ok(key) = std::env::var("WHATPULSE_API_KEY") {
-            let k = key.trim();
-            if !k.is_empty() {
-                // Zoek eerst user ID op via /users?search=
+        // 1. Probeer officiële WhatPulse Web API v1 als er API keys zijn geconfigureerd
+        let keys = self.get_api_keys(ctx);
+        if !keys.is_empty() {
+            let start_idx = self.key_index.fetch_add(1, Ordering::Relaxed) % keys.len();
+            for i in 0..keys.len() {
+                let current_key = &keys[(start_idx + i) % keys.len()];
                 let search_url = format!("https://whatpulse.org/api/v1/users?search={}", target);
                 let mut user_id_opt: Option<u64> = target.parse::<u64>().ok();
 
                 if user_id_opt.is_none() {
-                    if let Ok(s_resp) = ctx.http.get(&search_url).bearer_auth(k).timeout(Duration::from_secs(6)).send().await {
+                    if let Ok(s_resp) = ctx.http.get(&search_url).bearer_auth(current_key).timeout(Duration::from_secs(6)).send().await {
                         if s_resp.status().is_success() {
                             if let Ok(s_data) = s_resp.json::<WpApiUserSearchResponse>().await {
                                 if let Some(first) = s_data.users.and_then(|u| u.into_iter().next()) {
                                     user_id_opt = Some(first.id);
                                 }
                             }
+                        } else if s_resp.status() == 429 || s_resp.status() == 401 {
+                            continue; // Probeer volgende sleutel
                         }
                     }
                 }
 
                 if let Some(uid) = user_id_opt {
                     let show_url = format!("https://whatpulse.org/api/v1/users/{}", uid);
-                    if let Ok(resp) = ctx.http.get(&show_url).bearer_auth(k).timeout(Duration::from_secs(6)).send().await {
+                    if let Ok(resp) = ctx.http.get(&show_url).bearer_auth(current_key).timeout(Duration::from_secs(6)).send().await {
                         if resp.status().is_success() {
                             if let Ok(data) = resp.json::<WpApiUserResponse>().await {
                                 if let Some(user) = data.user {
@@ -270,14 +342,16 @@ impl WhatPulsePlugin {
                                     )));
                                 }
                             }
+                        } else if resp.status() == 429 || resp.status() == 401 {
+                            continue; // Probeer volgende sleutel bij rate limit
                         }
                     }
                 }
             }
         }
 
-        // 2. Probeer lokale WhatPulse Client API (standaard poort 3490)
-        let client_url = std::env::var("WHATPULSE_CLIENT_URL").unwrap_or_else(|_| "http://localhost:3490/v1/account-totals".to_string());
+        // 2. Probeer WhatPulse Client API (lokaal of LAN, bijv. poort 3490)
+        let client_url = self.get_client_url(ctx);
         if let Ok(resp) = ctx.http.get(&client_url).timeout(Duration::from_secs(3)).send().await {
             if resp.status().is_success() {
                 if let Ok(client_stats) = resp.json::<WpClientStats>().await {

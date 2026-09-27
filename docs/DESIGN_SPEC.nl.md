@@ -19,7 +19,7 @@ Belangrijkste kernfunctionaliteiten:
 5. **AI Vision & Image Alt-Text**: Automatische beknopte omschrijvingen van Discord-afbeeldingen en screenshots voor IRC-gebruikers (met embedding/resultaat caching).
 6. **Slimme AI-Toepassingen**: `!tldr` (gesprekssamenvatting), `!topic suggest`, AI-vertaling en SQLite FTS5 RAG op de kanaalgeschiedenis.
 7. **Presence, AFK & Last Online Hub**: Hybride aanwezigheidsdetectie (`!online`, `!lastonline`, `!seen`, quit-redenen en AFK-notificaties).
-8. **WhatPulse Community Stats ("Team de Apen")**: Live teamstatistieken (toetsaanslagen, muisklikken, ranking en persoonlijke stats) via de officiële WhatPulse API en de custom API op `https://www.grandmasg.nl/WPNEW/`.
+8. **WhatPulse Community Stats ("Deapen")**: Live teamstatistieken (toetsaanslagen, muisklikken, ranking en persoonlijke stats) via de officiële WhatPulse Web API v1.
 9. **Persoonlijke & Publieke Feeds (RSS/Atom & Keywords)**: Nieuwsfeeds in het kanaal én op maat gemaakte persoonlijke abonnementen via DM/Query met trefwoord-alerts en AI-digests.
 10. **Security & Abuse-Hardening**: RBAC-rechtenmodel (Ops/Mods/Owner), anti-raid/clone guard, flood guard, auto-pastebin voor codeblokken (>4 regels), NickServ spoofing-preventie en GitHub HMAC-handtekeningvalidatie.
 11. **Enterprise Observability & Graceful Lifecycle**: Gestructureerde tracing spans, gecontroleerde zero-data-loss shutdown flow en voorspelbare memory-footprint (< 20 MB RAM).
@@ -51,8 +51,8 @@ Het hart van de bot is een centrale eventbus die inkomende events van zowel IRC 
                                                         │              │ HTTP REST (Cached)
                                                         │              ▼
                                                         │    ┌──────────────────────────────────────────┐
-                                                        │    │  https://www.grandmasg.nl/WPNEW/         │
-                                                        │    │  (WhatPulse API - Team de Apen)          │
+                                                        │    │  https://whatpulse.org/api/v1/           │
+                                                        │    │  (Officiële WhatPulse Web API v1)        │
                                                         │    └──────────────────────────────────────────┘
                                                         ▼
                                                ┌────────────────────────────────────────────────────────┐
@@ -151,30 +151,28 @@ Om beheer veilig te houden over beide netwerken heen:
 
 ---
 
-## 5. WhatPulse Integratie ("Team de Apen")
+## 5. WhatPulse Integratie ("Deapen")
 
-De WhatPulse-community is een oerklassieke pijler van de Nederlandse IRC-cultuur. De bot ondersteunt **twee flexibele bronnen**:
-1. **Directe Officiële WhatPulse Web API v1** (`https://whatpulse.org/api/v1/`, zie [WhatPulse API Documentatie](https://whatpulse.org/help/api/web/intro)) met Bearer authenticatie via `WHATPULSE_API_KEY`.
-2. **Eigen Aggregator / Proxy Endpoint** (`https://www.grandmasg.nl/WPNEW/`) voor realtime pulse-diffs, custom team leaderboards en caching.
+De WhatPulse-community is een oerklassieke pijler van de Nederlandse IRC-cultuur. De bot integreert direct met de:
+* **Officiële WhatPulse Web API v1** (`https://whatpulse.org/api/v1/`, zie [WhatPulse API Documentatie](https://whatpulse.org/help/api/intro)) met Bearer authenticatie via `WHATPULSE_API_KEY` (en multi-key rotatie).
 
 ### 5.1 Commando's
-* **`!wp` / `!whatpulse`:** Toont actuele statistieken van **Team de Apen** (Keys, clicks, team rank, download/upload).
+* **`!wp` / `!whatpulse`:** Toont actuele statistieken van **Deapen** (Keys, clicks, team rank, download/upload).
 * **`!wp user [nick]` / `!wp <nick>` / `!wp me`:** Toont individuele statistieken van een gekoppelde gebruiker (of jezelf).
 * **`!wp link <whatpulse_gebruikersnaam>`:** Koppelt je IRC-nick of Discord-account aan je WhatPulse profiel.
-* **`!wp top`:** Toont het leaderboard van de top 5 typers/clickers binnen Team de Apen.
+* **`!wp top`:** Toont het leaderboard van de top 5 typers/clickers binnen Deapen.
 * **Live Pulse Notificaties (Background Worker):**
-  * Zodra Kuuke (of een ander teamlid) een pulse uploadt, verschijnt er direct een live kanaalbericht:  
-    `* [WhatPulse] Kuuke heeft zojuist gepulset! +14.280 keys, +4.190 clicks (Totaal: 12.840.100 keys)`
-  * **Inhaal-Alerts:** Als Kuuke door deze pulse een ander teamlid inhaalt op het leaderboard:  
-    `* [WhatPulse] Ranglijst-update! Kuuke stijgt naar plek #3 in Team de Apen (passeert Pietje)!`
+  * Zodra Gebruiker1 (of een ander teamlid) een pulse uploadt, verschijnt er direct een live kanaalbericht:  
+    `* [WhatPulse] Gebruiker1 heeft zojuist gepulset! +14.280 keys, +4.190 clicks (Totaal: 12.840.100 keys)`
+  * **Inhaal-Alerts:** Als Gebruiker1 door deze pulse een ander teamlid inhaalt op het leaderboard:  
+    `* [WhatPulse] Ranglijst-update! Gebruiker1 stijgt naar plek #3 in Deapen (passeert Pietje)!`
 * **Mijlpaal-Alerts:** Zodra het team of een individu een ronde grens passeert (bijv. 10M keys).
 
 ### 5.2 Ondersteunde API Endpoints
 * **Officiële WhatPulse Web API v1:**
   * Teams: `GET https://whatpulse.org/api/v1/teams?search=Team+de+Apen` en `GET /teams/:id`
   * Users: `GET https://whatpulse.org/api/v1/users?search=username` en `GET /users/:id`
-  * Bearer token authenticatie (`WHATPULSE_API_KEY`)
-* **Custom Backend (`https://www.grandmasg.nl/WPNEW/`):** JSON-feed met `team`, `recent_pulses` (met `keys_added` en `passed_user`) en `top_members`.
+  * Bearer token authenticatie (`WHATPULSE_API_KEY`, ondersteunt meerdere sleutels voor automatische rotatie)
 
 ---
 
@@ -202,7 +200,7 @@ De WhatPulse-community is een oerklassieke pijler van de Nederlandse IRC-cultuur
 
 ### Categorie 2: Community Stats & WhatPulse
 * **`plugin_whatpulse` (`!wp`, `!wp user`, `!wp link`, `!wp top`):**
-  * Haalt gecachete statistieken op van `https://www.grandmasg.nl/WPNEW/` of de officiële API voor Team de Apen.
+  * Haalt statistieken op via de officiële WhatPulse Web API v1 voor Deapen.
 * **`plugin_stats` (`!top`, `!peak`):**
   * `!top`: Top 5 meest actieve chatters van vandaag/deze week.
   * `!peak`: Historisch recordaantal gelijktijdige online gebruikers.
@@ -493,7 +491,7 @@ ircord/
     │   └── github.rs          # GitHub webhook payload parser met HMAC-validatie
     ├── plugins/               # === CLOUDBOT / IRCPLUS / AI / WP PLUGINS ===
     │   ├── mod.rs             # Plugin Trait, Lifecycle supervision & PluginManager
-    │   ├── whatpulse.rs       # WhatPulse API client (Team de Apen op grandmasg.nl)
+    │   ├── whatpulse.rs       # WhatPulse API client (officiële WhatPulse v1 API)
     │   ├── ai.rs              # FreeToken LLM Plugin (!ai, !tldr, !topic)
     │   ├── presence.rs        # !online, !lastonline, !seen en quit logging
     │   ├── afk.rs             # !afk en auto-notificaties bij mentions
@@ -639,7 +637,7 @@ services:
       - DATABASE_URL=sqlite:///app/data/ircord.db
       - FREETOKEN_BASE_URL=http://host.docker.internal:8000/v1
       - FREETOKEN_MODEL=default
-      - WHATPULSE_API_URL=https://www.grandmasg.nl/WPNEW/api.php
+      - WHATPULSE_API_KEY=jouw_whatpulse_bearer_token
       - GITHUB_WEBHOOK_SECRET=jouw_geheime_webhook_token
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -658,6 +656,6 @@ services:
 | **Fase 1: Rust Core, Config & Safety** | Architectuur | `Plugin` trait en `PluginManager` met panic-isolatie, Serde config validatie, live reload, graceful shutdown en SQLite pool met checksum migraties. |
 | **Fase 2: FlashML FreeToken AI Hub** | Intelligentie | `FreeTokenClient` bouwen voor `/v1/chat/completions`, model manager (`!setmodel`), token-budgettering en vision hash-cache. |
 | **Fase 3: Multi-Channel Bridge & Loops** | Connectiviteit | Serenity Discord client, TLS IRC client met SASL, LRU cache voor replies, loop-guard, 429 webhook backoff en pastebin uploader. |
-| **Fase 4: Community, Presence & WhatPulse** | Community | `plugin_whatpulse` koppelen aan `grandmasg.nl/WPNEW/` en officiële API, `!online`, `!lastonline` (met quit logging) en `!afk`. |
+| **Fase 4: Community, Presence & WhatPulse** | Community | `plugin_whatpulse` koppelen aan officiële WhatPulse Web API v1, `!online`, `!lastonline` (met quit logging) en `!afk`. |
 | **Fase 5: Feeds, HMAC Webhooks & Rhai** | Automatisering | Axum webhook listener met HMAC-SHA256, `!rss` (publiek + privé DM), gesandboxte Rhai engine en audit trail logging. |
 | **Fase 6: Productie, Tests & Database Lifecycle** | Stabiliteit | Unit/integratietests draaien, automatische database retentie/VACUUM activeren, multi-stage Docker build en poort 9090 metrics valideren. |

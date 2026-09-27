@@ -7,7 +7,7 @@ command_prefixes = ["!", "."]
 
 # Bot-eigenaar identifiers voor beschermde beheercommando's
 bot_owner_discord_id = 0
-bot_owner_irc_nick = "Kuuke"
+bot_owner_irc_nick = "JouwNick"
 
 # Web dashboard / health-check HTTP-poort
 http_port = 9090
@@ -48,12 +48,18 @@ discord_webhook_url = "https://discord.com/api/webhooks/..."
 # discord_webhook_url = "https://discord.com/api/webhooks/..."
 # language = "en"
 
-# WhatPulse Instellingen ("Team de Apen")
+# WhatPulse Instellingen ("Deapen")
 [whatpulse]
-team_name = "Team de Apen"
-# Officiële WhatPulse Web API v1 (zie https://whatpulse.org/help/api/web/intro)
-# Vereist WHATPULSE_API_KEY in .env
-# Of gebruik optioneel een custom team feed zoals "https://www.grandmasg.nl/WPNEW/api.php"
+team_name = "Deapen"
+# Officiële WhatPulse Web API v1 (zie https://whatpulse.org/help/api/intro)
+# Ondersteunt persoonlijke Bearer tokens van https://whatpulse.org/go/settings-api-keys
+# Enkele sleutel:
+# api_key = "jouw_whatpulse_api_key_hier"
+# Of meerdere sleutels voor automatische round-robin rotatie (1.000 req/uur per key):
+# api_keys = ["sleutel_1", "sleutel_2"]
+# Of instelbaar via WHATPULSE_API_KEY in .env of docker-compose (komma-gescheiden "key1,key2")
+# Optionele lokale Client API URL (bijv. poort 3490 lokaal of op het LAN):
+# client_url = "http://localhost:3490/v1/account-totals"
 api_url = "https://whatpulse.org/api/v1"
 poll_interval_seconds = 180
 cache_ttl_seconds = 300

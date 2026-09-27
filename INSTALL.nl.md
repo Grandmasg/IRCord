@@ -132,7 +132,7 @@ Open `config.toml` en stel algemene voorkeuren, commando-voorvoegsels, kanaalkop
 language = "nl" # Standaard taal: "nl", "en", "de", "fr", "es"
 command_prefixes = ["!", "."] # Herkende commando-voorvoegsels (bijv. !help, .help)
 bot_owner_discord_id = 123456789012345678
-bot_owner_irc_nick = "Kuuke"
+bot_owner_irc_nick = "JouwNick"
 http_port = 9090
 pastebin_threshold_lines = 4
 admin_channel_irc = "#bot-logs"
@@ -153,7 +153,7 @@ discord_webhook_url = "https://discord.com/api/webhooks/..."
 # language = "nl"
 
 [whatpulse]
-team_name = "Team de Apen"
+team_name = "Deapen"
 api_url = "https://whatpulse.org/api/v1"
 poll_interval_seconds = 180
 cache_ttl_seconds = 300

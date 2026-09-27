@@ -66,7 +66,7 @@ Drawing inspiration from classic bots such as [CloudBot](https://github.com/Tota
 
 5. **Community Statistics: WhatPulse Integration**
    - Real-time keystroke, mouse click, and team rankings.
-   - Supports both the official WhatPulse API and custom REST endpoints (e.g. `grandmasg.nl`).
+   - Powered by the official WhatPulse Web API v1 with automatic key rotation and rate-limit fallback.
    - Profile nickname linking (`!wp link <username>`).
 
 6. **Security & Channel Moderation**
@@ -108,7 +108,7 @@ Drawing inspiration from classic bots such as [CloudBot](https://github.com/Tota
                                                         │              │ HTTP REST (Cached)
                                                         │              ▼
                                                         │    ┌──────────────────────────────────────────┐
-                                                        │    │  WhatPulse API ("Team de Apen")          │
+                                                        │    │  WhatPulse API ("Deapen")          │
                                                         │    └──────────────────────────────────────────┘
                                                         ▼
                                                ┌────────────────────────────────────────────────────────┐
@@ -239,7 +239,7 @@ docker compose logs -f ircord-ollama-init
 language = "en" # Default language: "en", "nl", "de", "fr", "es"
 command_prefixes = ["!", "."] # Recognized command prefixes in chat (e.g. !weer, .weather)
 bot_owner_discord_id = 0
-bot_owner_irc_nick = "Kuuke"
+bot_owner_irc_nick = "YourNick"
 http_port = 9090
 pastebin_threshold_lines = 4
 admin_channel_irc = "#bot-logs"
@@ -259,7 +259,7 @@ discord_webhook_url = "https://discord.com/api/webhooks/..."
 # language = "en"
 
 [whatpulse]
-team_name = "Team de Apen"
+team_name = "Deapen"
 api_url = "https://whatpulse.org/api/v1" # See https://whatpulse.org/help/api/web/intro
 poll_interval_seconds = 180
 cache_ttl_seconds = 300

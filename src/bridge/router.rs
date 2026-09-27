@@ -178,15 +178,15 @@ mod tests {
         router.record_bridge_link(
             "999888".into(),
             "#deapen".into(),
-            "Kuuke".into(),
+            "TestUser".into(),
             "Even een testpuls gedaan".into(),
         );
 
         let irc_ref = router.lookup_irc_by_discord_id("999888").expect("Moet IRC ref vinden");
-        assert_eq!(irc_ref.author, "Kuuke");
+        assert_eq!(irc_ref.author, "TestUser");
         assert_eq!(irc_ref.channel, "#deapen");
 
-        let discord_id = router.lookup_discord_by_irc("#deapen", "Kuuke", "Even een testpuls gedaan")
+        let discord_id = router.lookup_discord_by_irc("#deapen", "TestUser", "Even een testpuls gedaan")
             .expect("Moet Discord ID vinden");
         assert_eq!(discord_id, "999888");
     }

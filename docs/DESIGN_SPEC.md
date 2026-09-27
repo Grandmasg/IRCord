@@ -21,7 +21,7 @@ Key core capabilities:
 5. **AI Vision & Image Alt-Text**: Concise automatic descriptions of Discord images and screenshots for IRC users (with hash-based result caching).
 6. **Smart AI Utilities**: `!tldr` (conversation summarization), `!topic suggest`, translation, and SQLite FTS5 RAG retrieval over channel history.
 7. **Presence, AFK & Last Online Hub**: Hybrid presence detection (`!online`, `!lastonline`, `!seen`, quit reasons, and AFK notifications).
-8. **WhatPulse Community Statistics ("Team de Apen")**: Real-time team metrics (keystrokes, mouse clicks, ranking, and personal milestones) via the official WhatPulse Web API v1 and custom endpoints.
+8. **WhatPulse Community Statistics ("Deapen")**: Real-time team metrics (keystrokes, mouse clicks, ranking, and personal milestones) via the official WhatPulse Web API v1 and custom endpoints.
 9. **Personal & Public Feeds (RSS/Atom & Keyword Alerts)**: Channel newsfeeds alongside private subscriptions via DM/Query with keyword triggers and AI digests.
 10. **Security & Abuse Hardening**: Role-Based Access Control (Ops/Mods/Owner), anti-raid/clone protection, IRC flood control, auto-pastebin for multi-line snippets (>4 lines), NickServ verification, and GitHub HMAC signature validation.
 11. **Enterprise Observability & Graceful Lifecycle**: Structured tracing spans, controlled zero-data-loss shutdown flow, and predictable memory usage (< 20 MB RAM).
@@ -54,7 +54,7 @@ At the heart of the bot is a centralized event router that normalizes incoming e
                                                         │              ▼
                                                         │    ┌──────────────────────────────────────────┐
                                                         │    │  https://whatpulse.org/api/v1/           │
-                                                        │    │  (Official Web API v1 - Team de Apen)    │
+                                                        │    │  (Official Web API v1 - Deapen)    │
                                                         │    └──────────────────────────────────────────┘
                                                         ▼
                                                ┌────────────────────────────────────────────────────────┐
@@ -144,14 +144,14 @@ Upon receiving `SIGINT` (Ctrl+C), `SIGTERM` (Docker stop), or an owner `!shutdow
 
 ---
 
-## 5. WhatPulse Community Integration ("Team de Apen")
+## 5. WhatPulse Community Integration ("DeApen")
 
-WhatPulse community statistics are deeply rooted in Dutch IRC history. The bot supports **two flexible sources**:
-1. **Official WhatPulse Web API v1** (`https://whatpulse.org/api/v1/`, see [WhatPulse API Documentation](https://whatpulse.org/help/api/web/intro)) with Bearer token authentication via `WHATPULSE_API_KEY`.
-2. **Local Client API or Custom Proxy Endpoints** (e.g. `http://localhost:3490/v1/account-totals` or custom aggregate feeds).
+WhatPulse community statistics are deeply rooted in IRC culture. The bot connects directly to the:
+* **Official WhatPulse Web API v1** (`https://whatpulse.org/api/v1/`, see [WhatPulse API Documentation](https://whatpulse.org/help/api/intro)) with Bearer token authentication via `WHATPULSE_API_KEY` (and multi-key rotation).
+* **Optional Local Client API** (`http://localhost:3490/v1/account-totals` on LAN).
 
 ### 5.1 Commands
-* **`!wp` / `!whatpulse`:** Shows live team statistics for **Team de Apen** (Keys, clicks, team rank, data uploaded/downloaded).
+* **`!wp` / `!whatpulse`:** Shows live team statistics for **Deapen** (Keys, clicks, team rank, data uploaded/downloaded).
 * **`!wp user [nick]` / `!wp <nick>` / `!wp me`:** Displays personal statistics for a linked profile or yourself.
 * **`!wp link <username>`:** Links an IRC nick or Discord user to a WhatPulse username in SQLite.
 * **`!wp top`:** Displays the top 5 typers and clickers in the team.

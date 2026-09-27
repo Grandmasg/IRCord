@@ -7,7 +7,7 @@ command_prefixes = ["!", "."]
 
 # Bot owner identifiers for restricted admin commands
 bot_owner_discord_id = 0
-bot_owner_irc_nick = "Kuuke"
+bot_owner_irc_nick = "YourNick"
 
 # Web dashboard / health check HTTP port
 http_port = 9090
@@ -48,12 +48,18 @@ discord_webhook_url = "https://discord.com/api/webhooks/..."
 # discord_webhook_url = "https://discord.com/api/webhooks/..."
 # language = "nl"
 
-# WhatPulse Plugin Settings ("Team de Apen")
+# WhatPulse Plugin Settings ("Deapen")
 [whatpulse]
-team_name = "Team de Apen"
-# Official WhatPulse Web API v1 (see https://whatpulse.org/help/api/web/intro)
-# Requires WHATPULSE_API_KEY in .env
-# Or optionally use a custom team feed URL, e.g. "https://www.grandmasg.nl/WPNEW/api.php"
+team_name = "Deapen"
+# Official WhatPulse Web API v1 (see https://whatpulse.org/help/api/intro)
+# Supports personal Bearer tokens from https://whatpulse.org/go/settings-api-keys
+# Single key:
+# api_key = "your_whatpulse_api_key_here"
+# Or multiple keys for automatic round-robin rotation (1,000 req/hr per key):
+# api_keys = ["key_1", "key_2"]
+# Or set via WHATPULSE_API_KEY in .env or docker-compose (supports comma-separated "key1,key2")
+# Optional local Client API URL (e.g. running on port 3490 on localhost or LAN):
+# client_url = "http://localhost:3490/v1/account-totals"
 api_url = "https://whatpulse.org/api/v1"
 poll_interval_seconds = 180
 cache_ttl_seconds = 300

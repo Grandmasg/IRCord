@@ -10,6 +10,23 @@
 *.crt
 *.pfx
 
+# Production Configs with live secrets/tokens (Use .example files for git)
+config.toml
+docker-compose.n5.yml
+docker-compose.n5.*.yml
+docker-compose.server.yml
+docker-compose.server.*.yml
+docker-compose.override.yml
+!config.example.toml
+!config.example.nl.toml
+
+# Personal Build & Deployment Scripts (N5 Pro, Dedicated Server, Tar exporter)
+build-*.sh
+build-*.bat
+build-n5.sh
+build-server.sh
+build-tar.bat
+
 # ==============================================================================
 # 2. Local Databases & Chat Data (Data Privacy & FTS5 storage)
 # ==============================================================================
@@ -29,15 +46,26 @@ target/
 *.pdb
 
 # ==============================================================================
-# 4. Docker Volumes & Persistent AI Model Weights
+# 4. Docker Volumes, Images & Export Tars
 # ==============================================================================
 /data/
 /models/
 data/
 models/
+*.tar
+*.tar.gz
+*.tgz
 
 # ==============================================================================
-# 5. OS & Editor Specific Files
+# 5. Logs & Temporary Files
+# ==============================================================================
+*.log
+logs/
+*.bak
+*.tmp
+
+# ==============================================================================
+# 6. OS & Editor Specific Files
 # ==============================================================================
 # Windows
 Thumbs.db
@@ -61,11 +89,9 @@ $RECYCLE.BIN/
 .gemini/
 
 # ==============================================================================
-# 6. Local AI Agent Instructions & Prompts (Privé / niet naar Git)
+# 7. Local AI Agent Instructions & Prompts (Privé / niet naar Git)
 # ==============================================================================
 AGENTS.md
 CLAUDE.md
 .cursorrules
 .agents/
-
-

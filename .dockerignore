@@ -1,0 +1,9 @@
+target/
+.git/
+*.tar
+*.db
+*.db-*
+data/
+dist/
+*.log
+.env

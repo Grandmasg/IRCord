@@ -61,16 +61,30 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     info!("   IRCord: Hybride IRC-Discord AI Bot Daemon (Rust 2021)   ");
     info!("===========================================================");
 
-    // 3. Laad en valideer config.toml (of CONFIG_PATH indien opgegeven)
-    let config_path = std::env::var("CONFIG_PATH").unwrap_or_else(|_| "config.toml".to_string());
-    let cfg = match Config::load_from_file(&config_path) {
-        Ok(c) => {
-            info!("Configuratie succesvol geladen vanuit {}", config_path);
-            c
+    // 3. Laad en valideer configuratie (via CONFIG_TOML omgevingsvariabele of bestand)
+    let cfg = match std::env::var("CONFIG_TOML") {
+        Ok(inline_toml) if !inline_toml.trim().is_empty() => {
+            info!("Configuratie succesvol geladen vanuit CONFIG_TOML omgevingsvariabele (Compose/YAML)");
+            match Config::load_from_str(&inline_toml) {
+                Ok(c) => c,
+                Err(err) => {
+                    error!("Fout bij parsen van inline CONFIG_TOML omgevingsvariabele: {}", err);
+                    return Err(err);
+                }
+            }
         }
-        Err(err) => {
-            error!("Fout bij laden van configuratie vanuit {}: {}", config_path, err);
-            return Err(err);
+        _ => {
+            let config_path = std::env::var("CONFIG_PATH").unwrap_or_else(|_| "config.toml".to_string());
+            match Config::load_from_file(&config_path) {
+                Ok(c) => {
+                    info!("Configuratie succesvol geladen vanuit bestand: {}", config_path);
+                    c
+                }
+                Err(err) => {
+                    error!("Fout bij laden van configuratie vanuit bestand {}: {}", config_path, err);
+                    return Err(err);
+                }
+            }
         }
     };
 

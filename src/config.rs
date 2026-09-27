@@ -134,6 +134,12 @@ pub struct ChannelMapping {
 pub struct WhatPulseConfig {
     pub team_name: String,
     pub api_url: String,
+    #[serde(default)]
+    pub api_key: Option<String>,
+    #[serde(default)]
+    pub api_keys: Vec<String>,
+    #[serde(default)]
+    pub client_url: Option<String>,
     #[serde(default = "default_wp_poll_interval")]
     pub poll_interval_seconds: u64,
     #[serde(default = "default_wp_cache_ttl")]
@@ -239,11 +245,15 @@ impl Default for OpenMeteoConfig {
 }
 
 impl Config {
-    pub fn load_from_file<P: AsRef<Path>>(path: P) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
-        let content = fs::read_to_string(path)?;
-        let config: Config = toml::from_str(&content)?;
+    pub fn load_from_str(content: &str) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+        let config: Config = toml::from_str(content)?;
         config.validate()?;
         Ok(config)
+    }
+
+    pub fn load_from_file<P: AsRef<Path>>(path: P) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+        let content = fs::read_to_string(path)?;
+        Self::load_from_str(&content)
     }
 
     pub fn validate(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -296,7 +306,7 @@ mod tests {
         language = "en"
         command_prefixes = ["!", "."]
         bot_owner_discord_id = 0
-        bot_owner_irc_nick = "Kuuke"
+        bot_owner_irc_nick = "AdminNick"
         http_port = 9090
         pastebin_threshold_lines = 4
         admin_channel_irc = "#bot-logs"
@@ -319,7 +329,7 @@ mod tests {
         discord_webhook_url = "https://discord.com/api/webhooks/2"
 
         [whatpulse]
-        team_name = "Team de Apen"
+        team_name = "Deapen"
         api_url = "https://whatpulse.org/api/v1"
 
         [ai]
@@ -343,5 +353,38 @@ mod tests {
         assert_eq!(cfg.channel_language("irc", "#default"), "en");
         // Unknown channel -> fallback to general
         assert_eq!(cfg.channel_language("irc", "#unknown"), "en");
+    }
+
+    #[test]
+    fn test_load_from_str_valid() {
+        let toml_str = r##"
+        [general]
+        language = "nl"
+        command_prefixes = ["!"]
+        bot_owner_discord_id = 12345
+        bot_owner_irc_nick = "Admin"
+
+        [bridge]
+        loop_prevent_timeout_sec = 5
+        lru_cache_capacity = 100
+        sync_presence = false
+        sync_edits = false
+
+        [whatpulse]
+        team_name = "Test"
+        api_url = "https://example.com"
+
+        [ai]
+        base_url = "http://localhost:11434/v1"
+        default_model = "qwen2.5:7b"
+
+        [moderation]
+        irc_flood_delay_ms = 500
+        irc_line_max_bytes = 400
+        "##;
+
+        let cfg = Config::load_from_str(toml_str).expect("Should parse string successfully");
+        assert_eq!(cfg.general.language, "nl");
+        assert_eq!(cfg.general.bot_owner_irc_nick, "Admin");
     }
 }

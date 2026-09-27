@@ -7,7 +7,7 @@ command_prefixes = ["!", "."]
 
 # Bot-Besitzer Identifikatoren für geschützte Administrationsbefehle
 bot_owner_discord_id = 0
-bot_owner_irc_nick = "Kuuke"
+bot_owner_irc_nick = "DeinNick"
 
 # Web-Dashboard / Health-Check HTTP-Port
 http_port = 9090
@@ -48,12 +48,15 @@ discord_webhook_url = "https://discord.com/api/webhooks/..."
 # discord_webhook_url = "https://discord.com/api/webhooks/..."
 # language = "en"
 
-# WhatPulse Plugin-Einstellungen ("Team de Apen")
+# WhatPulse Plugin-Einstellungen ("Deapen")
 [whatpulse]
-team_name = "Team de Apen"
-# Offizielle WhatPulse Web-API v1 (siehe https://whatpulse.org/help/api/web/intro)
-# Erfordert WHATPULSE_API_KEY in .env
-# Oder verwende optional eine eigene Team-Feed-URL, z.B. "https://www.grandmasg.nl/WPNEW/api.php"
+team_name = "Deapen"
+# Offizielle WhatPulse Web-API v1 (siehe https://whatpulse.org/help/api/intro)
+# Unterstützt persönliche Bearer-Tokens von https://whatpulse.org/go/settings-api-keys
+# Einzelner Schlüssel:
+# api_key = "dein_whatpulse_api_key_hier"
+# Oder mehrere Schlüssel für automatische Rotation (1.000 Anfragen/Std. pro Schlüssel):
+# api_keys = ["schluessel_1", "schluessel_2"]
 api_url = "https://whatpulse.org/api/v1"
 poll_interval_seconds = 180
 cache_ttl_seconds = 300

@@ -44,7 +44,7 @@ mod tests {
 
     #[test]
     fn test_anti_ping() {
-        assert_eq!(anti_ping_nick("Kuuke"), "K\u{200B}uuke");
+        assert_eq!(anti_ping_nick("Alice"), "A\u{200B}lice");
         assert_eq!(anti_ping_nick("A"), "A");
     }
 

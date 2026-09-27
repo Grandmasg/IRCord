@@ -63,9 +63,9 @@ Geïnspireerd door klassieke bots zoals [CloudBot](https://github.com/TotallyNot
    - RAG (Retrieval-Augmented Generation) op basis van **SQLite FTS5** chatgeschiedenis.
    - Automatische Alt-Text generatie voor Discord afbeeldingen naar IRC.
 
-5. **Community Statistieken: WhatPulse ("Team de Apen")**
+5. **Community Statistieken: WhatPulse ("Deapen")**
    - Live statistieken voor toetsaanslagen, muisklikken en teamrankings.
-   - Ondersteuning voor zowel de officiële WhatPulse API als custom REST endpoints (zoals `grandmasg.nl`).
+   - Volledige integratie met de officiële WhatPulse Web API v1 met automatische rotatie over meerdere API-sleutels.
    - Gebruikers kunnen hun IRC/Discord-nick koppelen aan hun WhatPulse profiel.
 
 6. **Beveiliging & Moderatie**
@@ -106,7 +106,7 @@ Geïnspireerd door klassieke bots zoals [CloudBot](https://github.com/TotallyNot
                                                         │              │ HTTP REST (Cached)
                                                         │              ▼
                                                         │    ┌──────────────────────────────────────────┐
-                                                        │    │  WhatPulse API ("Team de Apen")          │
+                                                        │    │  WhatPulse API ("Deapen")          │
                                                         │    └──────────────────────────────────────────┘
                                                         ▼
                                                ┌────────────────────────────────────────────────────────┐
@@ -123,7 +123,7 @@ Alle commando's werken standaard met zowel een uitroepteken (`!`) als een punt (
 
 | Plugin | Triggers | Beschrijving | Voorbeeld |
 |---|---|---|---|
-| **WhatPulse** | `!wp`, `!whatpulse` | Haalt team- of individuele statistieken op van WhatPulse. Koppel nicks via `!wp link`. | `!wp`, `!wp Kuuke`, `!wp link Kuuke` |
+| **WhatPulse** | `!wp`, `!whatpulse` | Haalt team- of individuele statistieken op van WhatPulse. Koppel nicks via `!wp link`. | `!wp`, `!wp Gebruiker`, `!wp link Gebruiker` |
 | **AI Suite** | `!ai` | Stelt een vraag aan de lokale FreeToken LLM met kanaalcontext. | `!ai Leg uit wat een monad is.` |
 | | `!ai models` | Toont het actieve model en alle beschikbare modellen op de lokale AI-server. | `!ai models` |
 | | `!ai model <naam>` | **(Admin/Operator only)** Wisselt direct live het actieve AI-model zonder herstart. | `!ai model qwen2.5-coder` |
@@ -256,7 +256,7 @@ Het bestand `config.toml` regelt alle gedragsparameters van de bot (voorbeeldtem
 language = "nl" # Keuze: "nl", "en", "de", "fr", "es"
 command_prefixes = ["!", "."] # Herkende commando-prefixen in de chat (bijv. !weer, .weather)
 bot_owner_discord_id = 0
-bot_owner_irc_nick = "Kuuke"
+bot_owner_irc_nick = "JouwNick"
 http_port = 9090
 pastebin_threshold_lines = 4
 admin_channel_irc = "#bot-logs"
@@ -276,7 +276,7 @@ discord_webhook_url = "https://discord.com/api/webhooks/..."
 # language = "nl"
 
 [whatpulse]
-team_name = "Team de Apen"
+team_name = "Deapen"
 api_url = "https://whatpulse.org/api/v1" # Zie https://whatpulse.org/help/api/web/intro
 poll_interval_seconds = 180
 cache_ttl_seconds = 300
