@@ -16,29 +16,59 @@ struct MyMemoryData {
     translated_text: Option<String>,
 }
 
-fn resolve_lang(input: &str) -> Option<(&'static str, &'static str)> {
-    match input.trim().to_lowercase().as_str() {
-        "nl" | "ned" | "nld" | "dutch" | "nederlands" => Some(("NL", "Dutch")),
-        "de" | "ger" | "deu" | "german" | "duits" | "deutsch" => Some(("DE", "German")),
-        "en" | "eng" | "english" | "engels" => Some(("EN", "English")),
-        "es" | "sp" | "spa" | "spanish" | "spaans" | "español" => Some(("ES", "Spanish")),
-        "fr" | "fra" | "fre" | "french" | "frans" | "français" => Some(("FR", "French")),
-        "it" | "ita" | "italian" | "italiaans" | "italiano" => Some(("IT", "Italian")),
-        "pt" | "por" | "portuguese" | "portugees" => Some(("PT", "Portuguese")),
-        "ru" | "rus" | "russian" | "russisch" => Some(("RU", "Russian")),
-        "ja" | "jp" | "jpn" | "japanese" | "japans" => Some(("JA", "Japanese")),
-        "zh" | "cn" | "chi" | "chinese" | "chinees" => Some(("ZH", "Chinese")),
-        "pl" | "pol" | "polish" | "pools" => Some(("PL", "Polish")),
-        "sv" | "se" | "swe" | "swedish" | "zweeds" => Some(("SV", "Swedish")),
-        "da" | "dk" | "dan" | "danish" | "deens" => Some(("DA", "Danish")),
-        "fi" | "fin" | "finnish" | "fins" => Some(("FI", "Finnish")),
-        "no" | "nor" | "norwegian" | "noors" => Some(("NO", "Norwegian")),
-        "tr" | "tur" | "turkish" | "turks" => Some(("TR", "Turkish")),
-        "uk" | "ukr" | "ukrainian" | "oekraïens" => Some(("UK", "Ukrainian")),
-        "ar" | "ara" | "arabic" | "arabisch" => Some(("AR", "Arabic")),
-        "el" | "gr" | "gre" | "greek" | "grieks" => Some(("EL", "Greek")),
-        _ => None,
-    }
+fn resolve_lang(input: &str) -> Option<(String, String)> {
+    let s = input.trim().to_lowercase();
+    let res = match s.as_str() {
+        "nl" | "ned" | "nld" | "dutch" | "nederlands" | "hollands" => ("NL", "Dutch"),
+        "de" | "ger" | "deu" | "german" | "duits" | "deutsch" => ("DE", "German"),
+        "en" | "eng" | "english" | "engels" => ("EN", "English"),
+        "es" | "sp" | "spa" | "spanish" | "spaans" | "español" | "castellano" => ("ES", "Spanish"),
+        "fr" | "fra" | "fre" | "french" | "frans" | "français" => ("FR", "French"),
+        "it" | "ita" | "italian" | "italiaans" | "italiano" => ("IT", "Italian"),
+        "pt" | "por" | "portuguese" | "portugees" | "português" => ("PT", "Portuguese"),
+        "ru" | "rus" | "russian" | "russisch" => ("RU", "Russian"),
+        "ja" | "jp" | "jpn" | "japanese" | "japans" => ("JA", "Japanese"),
+        "zh" | "cn" | "chi" | "chinese" | "chinees" => ("ZH", "Chinese"),
+        "pl" | "pol" | "polish" | "pools" | "polski" => ("PL", "Polish"),
+        "sv" | "se" | "swe" | "swedish" | "zweeds" | "svenska" => ("SV", "Swedish"),
+        "da" | "dk" | "dan" | "danish" | "deens" | "dansk" => ("DA", "Danish"),
+        "fi" | "fin" | "finnish" | "fins" | "suomi" => ("FI", "Finnish"),
+        "no" | "nor" | "norwegian" | "noors" | "norsk" => ("NO", "Norwegian"),
+        "tr" | "tur" | "turkish" | "turks" | "türkçe" => ("TR", "Turkish"),
+        "uk" | "ua" | "ukr" | "ukrainian" | "oekraïens" => ("UK", "Ukrainian"),
+        "ar" | "ara" | "arabic" | "arabisch" => ("AR", "Arabic"),
+        "el" | "gr" | "gre" | "greek" | "grieks" => ("EL", "Greek"),
+        "cs" | "cz" | "cze" | "ces" | "czech" | "tsjechisch" => ("CS", "Czech"),
+        "hu" | "hun" | "hungarian" | "hongaars" | "magyar" => ("HU", "Hungarian"),
+        "ro" | "ron" | "rum" | "romanian" | "roemeens" => ("RO", "Romanian"),
+        "bg" | "bul" | "bulgarian" | "bulgaars" => ("BG", "Bulgarian"),
+        "hr" | "cro" | "hrv" | "croatian" | "kroatisch" => ("HR", "Croatian"),
+        "sr" | "srp" | "serbian" | "servisch" => ("SR", "Serbian"),
+        "sk" | "slk" | "slovak" | "slowaaks" => ("SK", "Slovak"),
+        "sl" | "slv" | "slovenian" | "sloveens" => ("SL", "Slovenian"),
+        "id" | "ind" | "indonesian" | "indonesisch" => ("ID", "Indonesian"),
+        "hi" | "hin" | "hindi" => ("HI", "Hindi"),
+        "th" | "tha" | "thai" | "thais" => ("TH", "Thai"),
+        "vi" | "vie" | "vietnamese" | "vietnamees" => ("VI", "Vietnamese"),
+        "he" | "heb" | "il" | "hebrew" | "hebreeuws" => ("HE", "Hebrew"),
+        "la" | "lat" | "latin" | "latijn" => ("LA", "Latin"),
+        "fy" | "fry" | "frisian" | "fries" => ("FY", "Frisian"),
+        "af" | "afr" | "afrikaans" => ("AF", "Afrikaans"),
+        "eo" | "epo" | "esperanto" => ("EO", "Esperanto"),
+        "is" | "ice" | "isl" | "icelandic" | "ijslands" => ("IS", "Icelandic"),
+        "et" | "est" | "estonian" | "ests" => ("ET", "Estonian"),
+        "lv" | "lav" | "latvian" | "lets" => ("LV", "Latvian"),
+        "lt" | "lit" | "lithuanian" | "litouws" => ("LT", "Lithuanian"),
+        "ca" | "cat" | "catalan" | "catalaans" => ("CA", "Catalan"),
+        _ => {
+            // Als het een 2- of 3-letterige ISO code is, accepteer deze dynamisch
+            if (s.len() == 2 || s.len() == 3) && s.chars().all(|c| c.is_ascii_alphabetic()) {
+                return Some((s.to_uppercase(), s.to_uppercase()));
+            }
+            return None;
+        }
+    };
+    Some((res.0.to_string(), res.1.to_string()))
 }
 
 #[async_trait]
@@ -74,26 +104,26 @@ impl Plugin for TranslatePlugin {
         }
 
         // Parse taalopties: "nl:de", "de", "en", "sp", "es", "fr", etc.
-        let (from_code, from_name, to_code, to_name, text_to_translate) = if let Some((first, rest)) = args.split_once(' ') {
+        let (from_code, from_name, to_code, to_name, text_to_translate, is_auto_bilingual) = if let Some((first, rest)) = args.split_once(' ') {
             if first.contains(':') {
                 let mut parts = first.splitn(2, ':');
                 let raw_from = parts.next().unwrap_or("auto");
                 let raw_to = parts.next().unwrap_or(default_target);
 
-                let (f_code, f_name) = resolve_lang(raw_from).unwrap_or(("AUTO", "auto-detected language"));
+                let (f_code, f_name) = resolve_lang(raw_from).unwrap_or(("AUTO".into(), "auto-detected language".into()));
                 let (t_code, t_name) = resolve_lang(raw_to).unwrap_or_else(|| {
-                    resolve_lang(default_target).unwrap_or(("NL", "Dutch"))
+                    resolve_lang(default_target).unwrap_or(("NL".into(), "Dutch".into()))
                 });
-                (f_code, f_name, t_code, t_name, rest.trim())
+                (f_code, f_name, t_code, t_name, rest.trim(), false)
             } else if let Some((code, name)) = resolve_lang(first) {
-                ("AUTO", "auto-detected language", code, name, rest.trim())
+                ("AUTO".into(), "auto-detected language".into(), code, name, rest.trim(), false)
             } else {
-                let (def_code, def_name) = resolve_lang(default_target).unwrap_or(("NL", "Dutch"));
-                ("AUTO", "auto-detected language", def_code, def_name, args)
+                let (def_code, def_name) = resolve_lang(default_target).unwrap_or(("NL".into(), "Dutch".into()));
+                ("AUTO".into(), "auto-detected language".into(), def_code, def_name, args, true)
             }
         } else {
-            let (def_code, def_name) = resolve_lang(default_target).unwrap_or(("NL", "Dutch"));
-            ("AUTO", "auto-detected language", def_code, def_name, args)
+            let (def_code, def_name) = resolve_lang(default_target).unwrap_or(("NL".into(), "Dutch".into()));
+            ("AUTO".into(), "auto-detected language".into(), def_code, def_name, args, true)
         };
 
         if text_to_translate.is_empty() {
@@ -165,17 +195,25 @@ impl Plugin for TranslatePlugin {
         // 2. Probeer de lokale FlashML FreeToken AI (Ollama Qwen2.5) met duidelijke instructie
         let current_model = ctx.ai_manager.get_model();
         if ctx.ai_manager.can_consume(80) {
-            let prompt = format!(
-                "You are a professional translator. Translate the following text into {} (from {}). Output ONLY the direct translated text in {}, without quotes, explanations, or notes. Do NOT repeat the input sentence if it is not in {}:\n\n{}",
-                to_name, from_name, to_name, to_name, text_to_translate
-            );
+            let prompt = if is_auto_bilingual {
+                format!(
+                    "You are an expert translator. Detect the language of the following text:\n- If the text is in Dutch, translate it into English.\n- If the text is in English or any other language, translate it into Dutch.\nOutput ONLY the clean translated sentence without notes, quotes, or explanations:\n\n{}",
+                    text_to_translate
+                )
+            } else {
+                format!(
+                    "You are a professional translator. Translate the following text into {} (from {}). Output ONLY the direct translated text in {}, without quotes, explanations, or notes. Do NOT repeat the input sentence if it is not in {}:\n\n{}",
+                    to_name, from_name, to_name, to_name, text_to_translate
+                )
+            };
 
             if let Ok(reply) = ctx.ai_client.ask("Translator", &prompt, Some(&current_model)).await {
                 let clean = reply.trim().trim_matches('"').trim().to_string();
                 // Weiger antwoorden die leeg zijn óf een letterlijke echo zijn van de bronsleutel
                 if !clean.is_empty() && (!clean.eq_ignore_ascii_case(text_to_translate) || to_name == from_name) {
                     ctx.ai_manager.record_consumption(60);
-                    return Ok(Some(format!("🌐 [{} -> {}] {}", ai_label, to_code, clean)));
+                    let target_header = if is_auto_bilingual { "AUTO" } else { &to_code };
+                    return Ok(Some(format!("🌐 [{} -> {}] {}", ai_label, target_header, clean)));
                 }
             }
         }
@@ -200,7 +238,13 @@ impl Plugin for TranslatePlugin {
             if let Ok(data) = resp.json::<MyMemoryResponse>().await {
                 if let Some(res) = data.response_data {
                     if let Some(trans) = res.translated_text {
-                        let clean = trans.replace("&quot;", "\"").replace("&#39;", "'").replace("&amp;", "&");
+                        let clean = trans
+                            .replace("&quot;", "\"")
+                            .replace("&#39;", "'")
+                            .replace("&#039;", "'")
+                            .replace("&amp;", "&")
+                            .replace("&lt;", "<")
+                            .replace("&gt;", ">");
                         return Ok(Some(format!(
                             "🌐 [{} -> {}] {}",
                             web_label,
