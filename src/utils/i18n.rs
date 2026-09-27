@@ -28,6 +28,10 @@ pub struct LocaleManager {
     user_preferences: Arc<RwLock<HashMap<(String, String), String>>>,
 }
 
+const EMBEDDED_NL: &str = include_str!("../../locales/nl.toml");
+const EMBEDDED_EN: &str = include_str!("../../locales/en.toml");
+const EMBEDDED_DE: &str = include_str!("../../locales/de.toml");
+
 impl LocaleManager {
     /// Loads all locale files from the specified directory (defaults to "locales")
     pub fn load<P: AsRef<Path>>(locales_dir: P, default_lang: &str) -> Self {
@@ -36,7 +40,21 @@ impl LocaleManager {
         let mut all_messages = HashMap::new();
         let mut available_languages = Vec::new();
 
-        // 1. Scan directory for all .toml locale files
+        // 0. Pre-load embedded compile-time defaults (fail-safe for Docker containers)
+        for (lang_code, content) in [("nl", EMBEDDED_NL), ("en", EMBEDDED_EN), ("de", EMBEDDED_DE)] {
+            if let Ok(loc_file) = toml::from_str::<LocaleFile>(content) {
+                for (canonical, aliases) in loc_file.aliases {
+                    alias_to_canonical.insert(canonical.to_lowercase(), canonical.clone());
+                    for alias in aliases {
+                        alias_to_canonical.insert(alias.to_lowercase(), canonical.clone());
+                    }
+                }
+                all_messages.insert(lang_code.to_string(), loc_file.messages);
+                available_languages.push(lang_code.to_string());
+            }
+        }
+
+        // 1. Scan directory for all .toml locale files (allows runtime overriding)
         if let Ok(entries) = fs::read_dir(&dir) {
             for entry in entries.flatten() {
                 let path = entry.path();
@@ -65,6 +83,7 @@ impl LocaleManager {
         }
 
         available_languages.sort();
+        available_languages.dedup();
 
         let fallback_messages = all_messages.get("en").cloned().unwrap_or_default();
         let active_language = default_lang.to_string();

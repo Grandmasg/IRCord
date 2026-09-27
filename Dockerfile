@@ -49,11 +49,13 @@ WORKDIR /app
 # Kopieer gecompileerde binary en benodigde assets
 COPY --from=builder /usr/src/ircord/target/release/ircord /app/ircord
 COPY --from=builder /usr/src/ircord/migrations /app/migrations
+COPY --from=builder /usr/src/ircord/locales /app/locales
+COPY --from=builder /usr/src/ircord/scripts /app/scripts
 COPY config.toml /app/config.toml
 COPY .env.example /app/.env.example
 
-# Creëer data- en scripts directory
-RUN mkdir -p /app/data /app/scripts
+# Creëer data directory
+RUN mkdir -p /app/data
 
 # Stel omgevingsvariabelen in
 ENV RUST_LOG=info,ircord=debug
