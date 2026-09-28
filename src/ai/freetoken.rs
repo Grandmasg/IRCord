@@ -86,8 +86,24 @@ impl FreeTokenClient {
         &self.default_model
     }
 
-    /// Voert een prompt uit via de OpenAI-compatibele FreeToken API
+    /// Voert een prompt uit via de OpenAI-compatibele FreeToken API met standaard system prompt
     pub async fn ask(&self, user: &str, prompt: &str, custom_model: Option<&str>) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+        self.ask_with_system(
+            "Je bent een behulpzame, nuchtere en gevatte AI-assistent in een hybride IRC/Discord chatkanaal. Antwoord beknopt, to-the-point en zonder overbodige omhaal.",
+            user,
+            prompt,
+            custom_model,
+        ).await
+    }
+
+    /// Voert een prompt uit met een aangepaste system prompt (bijv. voor strikte vertalingen)
+    pub async fn ask_with_system(
+        &self,
+        system_prompt: &str,
+        user: &str,
+        prompt: &str,
+        custom_model: Option<&str>,
+    ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
         let url = format!("{}/chat/completions", self.base_url.trim_end_matches('/'));
         let model = custom_model.unwrap_or(&self.default_model);
 
@@ -96,9 +112,7 @@ impl FreeTokenClient {
             messages: vec![
                 ChatMessage {
                     role: "system".into(),
-                    content: "Je bent een behulpzame, nuchtere en gevatte AI-assistent in een hybride IRC/Discord chatkanaal. "
-                        .to_string()
-                        + "Antwoord beknopt, to-the-point en zonder overbodige omhaal.",
+                    content: system_prompt.to_string(),
                 },
                 ChatMessage {
                     role: "user".into(),

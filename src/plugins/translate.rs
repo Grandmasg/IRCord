@@ -461,9 +461,9 @@ impl Plugin for TranslatePlugin {
             return Ok(None);
         }
 
-        // 2. Filter ruis: minimale lengte (minstens 3 woorden en 15 tekens) en geen URLs
-        if trimmed.len() < 15
-            || trimmed.split_whitespace().count() < 3
+        // 2. Filter ruis: minimale lengte (minstens 2 woorden en 6 tekens) en geen URLs
+        if trimmed.len() < 6
+            || (trimmed.split_whitespace().count() < 2 && trimmed.len() < 12)
             || trimmed.contains("http://")
             || trimmed.contains("https://")
         {
@@ -487,37 +487,65 @@ impl Plugin for TranslatePlugin {
             return Ok(None);
         }
 
-        let prompt = format!(
-            "You are an automated real-time chat translator for an IRC/Discord channel where the primary chat language is {} ({}).\n\nEvaluate this message:\n1. If the message is already written in {} (including slang, informal chat, dialect), OR if it is code/technical commands, reply ONLY with 'NONE'.\n2. If the message is written in ANOTHER language (e.g. English, German, French, Spanish, etc.), translate it into {}. Output ONLY in this exact format:\n[ORIG_LANG_CODE] <translated text in {}>\n\nDo not include quotes or notes.\n\nMessage: \"{}\"",
-            settings.language_name, settings.language_code, settings.language_name, settings.language_name, settings.language_name, trimmed
+        let system_prompt = format!(
+            "You are an automated real-time chat translator for an IRC/Discord channel where the primary chat language is {} ({}).\n\
+            TASK:\n\
+            1. If the message is ALREADY written in {} (or is code/technical syntax), reply with ONLY the word: NONE\n\
+            2. If the message is written in ANOTHER language, translate it directly into {}.\n\
+            Output format: [SOURCE_LANG_CODE] <translated text in {}>\n\
+            Example: [NL] Hello world\n\
+            Never output explanations, quotes, or notes.",
+            settings.language_name, settings.language_code,
+            settings.language_name,
+            settings.language_name,
+            settings.language_name
         );
 
-        let ask_fut = ctx.ai_client.ask("AutoTranslator", &prompt, Some(&current_model));
+        let user_prompt = format!("Message: \"{}\"", trimmed);
+
+        let ask_fut = ctx.ai_client.ask_with_system(&system_prompt, "AutoTranslator", &user_prompt, Some(&current_model));
         if let Ok(Ok(ai_reply)) = tokio::time::timeout(Duration::from_secs(8), ask_fut).await {
             let clean = ai_reply.trim().trim_matches('"').trim();
+            tracing::info!("🌐 [Auto-Translate Evaluatie] Kanaal '{}': input='{}' ➔ AI='{}'", msg.channel, trimmed, clean);
 
-            if clean.is_empty() || clean.starts_with("NONE") || clean.eq_ignore_ascii_case("NONE") {
+            if clean.is_empty()
+                || clean.starts_with("NONE")
+                || clean.eq_ignore_ascii_case("NONE")
+                || clean.ends_with("NONE")
+            {
                 return Ok(None);
             }
 
-            // Verwacht formaat: "[EN] Vertaling hier" of "[DE] Vertaling hier"
-            if clean.starts_with('[') && clean.contains(']') {
-                if let Some(close_bracket) = clean.find(']') {
-                    let orig_lang = clean[1..close_bracket].trim().to_uppercase();
-                    let translation = clean[close_bracket + 1..].trim();
-
-                    if !translation.is_empty()
-                        && orig_lang != settings.language_code.to_uppercase()
-                        && !translation.eq_ignore_ascii_case(trimmed)
-                    {
-                        ctx.ai_manager.record_consumption(40);
-                        return Ok(Some(format!(
-                            "🌐 [{} ➔ {}] \x02{}\x02: {}",
-                            orig_lang, settings.language_code, msg.author, translation
-                        )));
-                    }
+            // Haal eventuele taal-tag [XX] op
+            let (orig_lang, translation) = if let (Some(open), Some(close)) = (clean.find('['), clean.find(']')) {
+                if close > open && close - open <= 10 {
+                    let tag = clean[open + 1..close].trim().to_uppercase();
+                    let rest = clean[close + 1..].trim().trim_start_matches(':').trim();
+                    (tag, rest.to_string())
+                } else {
+                    ("?".to_string(), clean.to_string())
                 }
+            } else {
+                ("?".to_string(), clean.to_string())
+            };
+
+            // Als het resultaat identiek is aan het origineel, niet vertalen
+            if translation.is_empty() || translation.eq_ignore_ascii_case(trimmed) {
+                return Ok(None);
             }
+
+            // Bouw de taalbadge: als de AI per ongeluk de doeltaal tagde (bijv. [EN]), toon [➔ EN]
+            let badge = if orig_lang == "?" || orig_lang == settings.language_code.to_uppercase() {
+                format!("🌐 [➔ {}]", settings.language_code.to_uppercase())
+            } else {
+                format!("🌐 [{} ➔ {}]", orig_lang, settings.language_code.to_uppercase())
+            };
+
+            ctx.ai_manager.record_consumption(40);
+            return Ok(Some(format!(
+                "{} \x02{}\x02: {}",
+                badge, msg.author, translation
+            )));
         }
 
         Ok(None)
