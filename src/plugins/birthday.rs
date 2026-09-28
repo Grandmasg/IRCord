@@ -121,11 +121,11 @@ impl Plugin for BirthdayPlugin {
     }
 
     fn triggers(&self) -> &[&'static str] {
-        &["bday", "verjaardag", "birthday"]
+        &["bday", "verjaardag", "birthday", "jarig"]
     }
 
     fn help(&self) -> &'static str {
-        "!bday set <DD-MM[-YYYY]> | !bday next | !bday [nick] | !bday del - Automated birthday announcements"
+        "!bday set <DD-MM[-YYYY]> | !bday next | !bday [nick] | !jarig [nick] - Automatische verjaardagsfelicitaties"
     }
 
     async fn on_command(

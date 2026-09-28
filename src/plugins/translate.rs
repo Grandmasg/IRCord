@@ -1,4 +1,5 @@
 use super::{CommandEvent, MessageEvent, Plugin, PluginContext};
+use crate::utils::i18n::LocaleManager;
 use async_trait::async_trait;
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -161,6 +162,209 @@ fn resolve_lang(input: &str) -> Option<(String, String)> {
         }
     };
     Some((res.0.to_string(), res.1.to_string()))
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct LanguageScore {
+    pub dutch_pct: f32,
+    pub english_pct: f32,
+    pub german_pct: f32,
+    pub french_pct: f32,
+    pub spanish_pct: f32,
+    pub dutch_count: usize,
+    pub english_count: usize,
+    pub german_count: usize,
+    pub french_count: usize,
+    pub spanish_count: usize,
+    pub total_words: usize,
+}
+
+impl LanguageScore {
+    pub fn is_likely_dutch(&self) -> bool {
+        if self.dutch_count == 0 {
+            return false;
+        }
+
+        // Als een andere taal duidelijk meer hits heeft dan Nederlands, is het geen Nederlands!
+        if self.french_count > self.dutch_count
+            || self.german_count > self.dutch_count
+            || self.spanish_count > self.dutch_count
+            || (self.english_count > self.dutch_count && self.english_pct >= 25.0)
+        {
+            return false;
+        }
+
+        self.dutch_count >= 2 || (self.total_words <= 4 && self.dutch_count >= 1) || self.dutch_pct >= 25.0
+    }
+
+    pub fn is_likely_english(&self) -> bool {
+        self.english_count >= 2
+            && self.english_count > self.dutch_count
+            && (self.english_pct >= 25.0 || (self.total_words <= 5 && self.english_count >= 2))
+    }
+
+    pub fn is_likely_german(&self) -> bool {
+        self.german_count >= 2
+            && self.german_count > self.dutch_count
+            && (self.german_pct >= 20.0 || (self.total_words <= 5 && self.german_count >= 2))
+    }
+
+    pub fn is_likely_french(&self) -> bool {
+        self.french_count >= 2
+            && self.french_count > self.dutch_count
+            && (self.french_pct >= 20.0 || (self.total_words <= 5 && self.french_count >= 2))
+    }
+
+    pub fn is_likely_spanish(&self) -> bool {
+        self.spanish_count >= 2
+            && self.spanish_count > self.dutch_count
+            && (self.spanish_pct >= 20.0 || (self.total_words <= 5 && self.spanish_count >= 2))
+    }
+
+    /// Geeft aan of de tekst overtuigend een andere taal is dan Nederlands
+    pub fn is_foreign_to_dutch(&self) -> bool {
+        !self.is_likely_dutch() && (self.is_likely_english() || self.is_likely_german() || self.is_likely_french() || self.is_likely_spanish())
+    }
+
+    /// Geeft aan of de tekst overtuigend een andere taal is dan Engels
+    pub fn is_foreign_to_english(&self) -> bool {
+        !self.is_likely_english() && (self.is_likely_dutch() || self.is_likely_german() || self.is_likely_french() || self.is_likely_spanish())
+    }
+}
+
+/// Detecteert of een tekst niet-Latijnse alfabetten bevat (zoals Chinees, Japans, Koreaans, Cyrillisch, Grieks, Arabisch)
+pub fn contains_non_latin_script(text: &str) -> bool {
+    text.chars().any(|c| {
+        ('\u{0400}'..='\u{04FF}').contains(&c) // Cyrillisch (Russisch, Oekraïens, etc.)
+        || ('\u{0370}'..='\u{03FF}').contains(&c) // Grieks
+        || ('\u{0600}'..='\u{06FF}').contains(&c) // Arabisch
+        || ('\u{0590}'..='\u{05FF}').contains(&c) // Hebreeuws
+        || ('\u{4E00}'..='\u{9FFF}').contains(&c) // Chinees / Japans Kanji (CJK Ideographs)
+        || ('\u{3400}'..='\u{4DBF}').contains(&c) // CJK Extension A
+        || ('\u{3040}'..='\u{309F}').contains(&c) // Japans Hiragana
+        || ('\u{30A0}'..='\u{30FF}').contains(&c) // Japans Katakana
+        || ('\u{AC00}'..='\u{D7AF}').contains(&c) // Koreaans Hangul
+        || ('\u{0E00}'..='\u{0E7F}').contains(&c) // Thai
+        || ('\u{0900}'..='\u{097F}').contains(&c) // Hindi / Devanagari
+    })
+}
+
+/// Berekent de relatieve taalpercentages (Nederlands, Engels, Duits, Frans, Spaans) voor een chatbericht
+pub fn calculate_language_percentages(text: &str) -> LanguageScore {
+    calculate_language_percentages_with_locale(text, None)
+}
+
+/// Berekent de relatieve taalpercentages met behulp van de centrale LocaleManager
+pub fn calculate_language_percentages_with_locale(text: &str, locale: Option<&LocaleManager>) -> LanguageScore {
+    let lower = text.to_lowercase();
+    let words: Vec<&str> = lower
+        .split(|c: char| !c.is_alphabetic())
+        .filter(|w| !w.is_empty())
+        .collect();
+
+    if words.is_empty() {
+        return LanguageScore {
+            dutch_pct: 0.0,
+            english_pct: 0.0,
+            german_pct: 0.0,
+            french_pct: 0.0,
+            spanish_pct: 0.0,
+            dutch_count: 0,
+            english_count: 0,
+            german_count: 0,
+            french_count: 0,
+            spanish_count: 0,
+            total_words: 0,
+        };
+    }
+
+    let default_locale;
+    let loc = match locale {
+        Some(l) => l,
+        None => {
+            default_locale = LocaleManager::load("locales", "nl");
+            &default_locale
+        }
+    };
+
+    let nl_words = loc.get_distinct_words("nl").unwrap_or(&[]);
+    let en_words = loc.get_distinct_words("en").unwrap_or(&[]);
+    let de_words = loc.get_distinct_words("de").unwrap_or(&[]);
+
+    // Fallbacks voor Frans en Spaans
+    const DISTINCT_FRENCH: &[&str] = &[
+        "les", "des", "une", "est", "sont", "que", "qui", "dans", "pour", "pas", "sur", "cette", "avec",
+        "tout", "tous", "nous", "vous", "ils", "elles", "mais", "notre", "votre", "leur", "comme",
+        "aussi", "bonjour", "merci", "salut", "comment", "pourquoi", "quand", "toujours", "mon", "ma",
+    ];
+
+    const DISTINCT_SPANISH: &[&str] = &[
+        "los", "las", "una", "unos", "unas", "por", "para", "con", "son", "como", "pero", "este", "esta",
+        "estos", "estas", "todo", "todos", "toda", "todas", "muy", "hola", "gracias", "amigo", "amigos",
+        "donde", "quando", "porque", "bueno", "buenos", "buenas", "también", "nosotros", "ustedes", "favor",
+    ];
+
+    let fr_custom = loc.get_distinct_words("fr");
+    let es_custom = loc.get_distinct_words("es");
+
+    let is_dutch_word = |w: &str| -> bool { nl_words.iter().any(|item| item.as_str() == w) };
+    let is_english_word = |w: &str| -> bool { en_words.iter().any(|item| item.as_str() == w) };
+    let is_german_word = |w: &str| -> bool { de_words.iter().any(|item| item.as_str() == w) };
+    let is_french_word = |w: &str| -> bool {
+        if let Some(list) = fr_custom {
+            list.iter().any(|item| item.as_str() == w)
+        } else {
+            DISTINCT_FRENCH.contains(&w)
+        }
+    };
+    let is_spanish_word = |w: &str| -> bool {
+        if let Some(list) = es_custom {
+            list.iter().any(|item| item.as_str() == w)
+        } else {
+            DISTINCT_SPANISH.contains(&w)
+        }
+    };
+
+    let mut dutch_hits = 0;
+    let mut english_hits = 0;
+    let mut german_hits = 0;
+    let mut french_hits = 0;
+    let mut spanish_hits = 0;
+
+    for w in &words {
+        if is_dutch_word(w) {
+            dutch_hits += 1;
+        } else if is_english_word(w) {
+            english_hits += 1;
+        } else if is_german_word(w) {
+            german_hits += 1;
+        } else if is_french_word(w) {
+            french_hits += 1;
+        } else if is_spanish_word(w) {
+            spanish_hits += 1;
+        }
+    }
+
+    let total = words.len();
+    let dutch_pct = (dutch_hits as f32 / total as f32) * 100.0;
+    let english_pct = (english_hits as f32 / total as f32) * 100.0;
+    let german_pct = (german_hits as f32 / total as f32) * 100.0;
+    let french_pct = (french_hits as f32 / total as f32) * 100.0;
+    let spanish_pct = (spanish_hits as f32 / total as f32) * 100.0;
+
+    LanguageScore {
+        dutch_pct,
+        english_pct,
+        german_pct,
+        french_pct,
+        spanish_pct,
+        dutch_count: dutch_hits,
+        english_count: english_hits,
+        german_count: german_hits,
+        french_count: french_hits,
+        spanish_count: spanish_hits,
+        total_words: total,
+    }
 }
 
 #[async_trait]
@@ -461,41 +665,103 @@ impl Plugin for TranslatePlugin {
             return Ok(None);
         }
 
-        // 2. Filter ruis: minimale lengte (minstens 2 woorden en 6 tekens) en geen URLs
-        if trimmed.len() < 6
-            || (trimmed.split_whitespace().count() < 2 && trimmed.len() < 12)
-            || trimmed.contains("http://")
-            || trimmed.contains("https://")
-        {
+        // 2. Filter ruis en URLs
+        if trimmed.contains("http://") || trimmed.contains("https://") {
             return Ok(None);
         }
 
-        // 3. Controleer of auto-vertaling actief is voor dit kanaal
+        let has_foreign_script = contains_non_latin_script(trimmed);
+        let char_count = trimmed.chars().count();
+        let word_count = trimmed.split_whitespace().count();
+
+        // Voor niet-Latijns schrift (Chinees, Japans, etc.): deze talen gebruiken geen spaties tussen woorden.
+        // Minstens 2 karakters is al een volwaardige zin (bijv. "你好", "这是一个测试句子。").
+        if has_foreign_script {
+            if char_count < 2 {
+                return Ok(None);
+            }
+        } else {
+            // Voor Latijns schrift (NL, EN, DE, FR, etc.): minstens 3 woorden en 12 tekens om korte kreten ("ok", "ja ja") te negeren
+            if word_count < 3 || char_count < 12 {
+                return Ok(None);
+            }
+        }
+
+        // 3. Filter alledaagse IRC slang en computer-leenwoorden (centraal beheerd in locales)
+        if ctx.locale.is_casual_banter(trimmed) {
+            return Ok(None);
+        }
+
+        // 4. Controleer of auto-vertaling actief is voor dit kanaal
         let settings = self.get_channel_settings(ctx, &msg.platform, &msg.channel).await;
         if !settings.auto_translate {
             return Ok(None);
         }
 
-        // 4. Cooldown per kanaal (6 seconden) om AI-overbelasting bij snelle chat te voorkomen
+        // 5. Relatieve taalpercentages berekenen (centraal uit LocaleManager en niet-Latijns schrift)
+        let scores = calculate_language_percentages_with_locale(trimmed, Some(&ctx.locale));
+        tracing::debug!(
+            "🌐 [Taalpercentages] input='{}' ➔ NL: {:.1}% ({} hits), EN: {:.1}% ({} hits), DE: {:.1}%, FR: {:.1}%, ES: {:.1}%, non-latin={} van {} woorden",
+            trimmed, scores.dutch_pct, scores.dutch_count, scores.english_pct, scores.english_count,
+            scores.german_pct, scores.french_pct, scores.spanish_pct, has_foreign_script, scores.total_words
+        );
+
+        // Filteren op basis van de ingestelde kanaaltaal:
+        if settings.language_code.eq_ignore_ascii_case("NL") {
+            // A. Als het Nederlands is (inclusief leenwoorden): direct overslaan!
+            if scores.is_likely_dutch() {
+                return Ok(None);
+            }
+
+            // B. Bericht moet overtuigend een buitenlandse taal zijn (EN, DE, FR, ES of ander schrift)
+            // Korte berichten (< 6 woorden) die geen duidelijke vreemde taalkenmerken hebben negeren we
+            if !scores.is_foreign_to_dutch() && !has_foreign_script && scores.total_words < 6 {
+                return Ok(None);
+            }
+        } else if settings.language_code.eq_ignore_ascii_case("EN") {
+            // Kanaal is Engels: als het Engels is -> overslaan!
+            if scores.is_likely_english() || (scores.total_words <= 5 && scores.english_count >= 1) || scores.english_pct >= 15.0 {
+                return Ok(None);
+            }
+
+            // Bericht moet overtuigend een buitenlandse taal zijn (NL, DE, FR, ES of ander schrift)
+            if !scores.is_foreign_to_english() && !has_foreign_script && scores.total_words < 6 {
+                return Ok(None);
+            }
+        } else if settings.language_code.eq_ignore_ascii_case("DE") {
+            // Kanaal is Duits: als het Duits is -> overslaan!
+            if scores.is_likely_german() || (scores.total_words <= 5 && scores.german_count >= 1) || scores.german_pct >= 15.0 {
+                return Ok(None);
+            }
+
+            if !scores.is_likely_dutch() && !scores.is_likely_english() && !scores.is_likely_french() && !has_foreign_script && scores.total_words < 6 {
+                return Ok(None);
+            }
+        }
+
+        // 6. Cooldown per kanaal (6 seconden) om AI-overbelasting bij snelle chat te voorkomen
         if !self.check_and_set_cooldown(&msg.channel, 6) {
             return Ok(None);
         }
 
-        // 5. Beoordeel met lokale Ollama AI of het bericht afwijkt van de kanaaltaal
+        // 7. Beoordeel met lokale Ollama AI of het bericht afwijkt van de kanaaltaal
         let current_model = ctx.ai_manager.get_model();
         if !ctx.ai_manager.can_consume(50) {
             return Ok(None);
         }
 
         let system_prompt = format!(
-            "You are an automated real-time chat translator for an IRC/Discord channel where the primary chat language is {} ({}).\n\
-            TASK:\n\
-            1. If the message is ALREADY written in {} (or is code/technical syntax), reply with ONLY the word: NONE\n\
-            2. If the message is written in ANOTHER language, translate it directly into {}.\n\
+            "You are a conservative automated chat translator for an IRC/Discord channel where the primary chat language is {} ({}).\n\
+            IMPORTANT CONTEXT:\n\
+            - Chatters speak {}, but frequently use English IT loanwords, tech terms, and brand names (e.g., 'portainer', 'settings', 'update', 'link', 'browser', 'password', 'server', 'download', 'docker').\n\
+            RULES:\n\
+            1. If the message is written in {} (even with English technical terms or brand names), reply ONLY with: NONE\n\
+            2. Do NOT translate messages that are already in {}!\n\
+            3. ONLY translate if the message is genuinely written in a COMPLETELY DIFFERENT language (e.g. full English, German, French, Spanish) by a foreign speaker.\n\
             Output format: [SOURCE_LANG_CODE] <translated text in {}>\n\
-            Example: [NL] Hello world\n\
-            Never output explanations, quotes, or notes.",
+            If no translation is needed, output ONLY: NONE",
             settings.language_name, settings.language_code,
+            settings.language_name,
             settings.language_name,
             settings.language_name,
             settings.language_name
@@ -529,6 +795,11 @@ impl Plugin for TranslatePlugin {
                 ("?".to_string(), clean.to_string())
             };
 
+            // Als de bron-taal dezelfde is als de doeltaal, nooit outputten
+            if orig_lang.eq_ignore_ascii_case(&settings.language_code) {
+                return Ok(None);
+            }
+
             // Als het resultaat identiek is aan het origineel, niet vertalen
             if translation.is_empty() || translation.eq_ignore_ascii_case(trimmed) {
                 return Ok(None);
@@ -551,3 +822,106 @@ impl Plugin for TranslatePlugin {
         Ok(None)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_language_percentages() {
+        let s1 = calculate_language_percentages("is dus overschreven of heeft nu verkeerde link");
+        assert!(s1.dutch_pct > 50.0);
+        assert!(s1.dutch_count >= 4);
+        assert!(s1.is_likely_dutch());
+        assert!(!s1.is_foreign_to_dutch());
+
+        let s2 = calculate_language_percentages("paswoord is goed, dat vind ik in de settings bij portainer terug");
+        assert!(s2.dutch_pct > 50.0);
+        assert!(s2.dutch_count >= 6);
+        assert!(s2.is_likely_dutch());
+        assert!(!s2.is_foreign_to_dutch());
+
+        let s3 = calculate_language_percentages("Hello everyone, does someone know how to configure the bridge in docker?");
+        assert!(s3.english_pct > 40.0);
+        assert!(s3.english_count >= 4);
+        assert_eq!(s3.dutch_count, 0);
+        assert!(s3.is_likely_english());
+        assert!(s3.is_foreign_to_dutch());
+
+        // Duits test
+        let s_de = calculate_language_percentages("Guten Tag, ich suche Hilfe mit meinem Linux Server bitte");
+        assert!(s_de.german_count >= 3);
+        assert!(s_de.is_likely_german());
+        assert!(s_de.is_foreign_to_dutch());
+
+        // Frans test
+        let s_fr = calculate_language_percentages("Bonjour tout le monde, comment allez-vous aujourd'hui?");
+        assert!(s_fr.french_count >= 2);
+        assert!(s_fr.is_likely_french());
+        assert!(s_fr.is_foreign_to_dutch());
+
+        // Spaans test
+        let s_es = calculate_language_percentages("Hola amigos, alguien me puede ayudar con este problema por favor?");
+        assert!(s_es.spanish_count >= 3);
+        assert!(s_es.is_likely_spanish());
+        assert!(s_es.is_foreign_to_dutch());
+    }
+
+    #[test]
+    fn test_non_latin_script() {
+        assert!(contains_non_latin_script("这是一个测试句子。"));
+        assert!(contains_non_latin_script("Привет как дела"));
+        assert!(contains_non_latin_script("Γειά σου κόσμε"));
+        assert!(contains_non_latin_script("مرحبا كيف حالك"));
+        assert!(contains_non_latin_script("こんにちは世界"));
+        assert!(!contains_non_latin_script("Gewoon een normale Nederlandse zin met café en één!"));
+    }
+
+    #[test]
+    fn test_is_casual_banter() {
+        let locale = LocaleManager::load("locales", "nl");
+        assert!(locale.is_casual_banter("yeah yeah"));
+        assert!(locale.is_casual_banter("nope, firefox: nope"));
+        assert!(locale.is_casual_banter("cool nice"));
+        assert!(!locale.is_casual_banter("Can someone please explain this error to me?"));
+    }
+
+    #[test]
+    fn test_locale_driven_language_percentages() {
+        let locale = LocaleManager::load("locales", "nl");
+        assert!(locale.is_casual_banter("settings portainer docker"));
+        assert!(locale.is_casual_banter("yeah nope"));
+
+        let score = calculate_language_percentages_with_locale(
+            "is dus overschreven of heeft nu verkeerde link",
+            Some(&locale),
+        );
+        assert!(score.is_likely_dutch());
+        assert!(!score.is_foreign_to_dutch());
+
+        let en_score = calculate_language_percentages_with_locale(
+            "Hello everyone, can you please help with this server configuration?",
+            Some(&locale),
+        );
+        assert!(en_score.is_likely_english());
+        assert!(en_score.is_foreign_to_dutch());
+
+        let fr_score1 = calculate_language_percentages_with_locale(
+            "Ceci est une phrase de test.",
+            Some(&locale),
+        );
+        assert!(fr_score1.is_likely_french());
+        assert!(fr_score1.is_foreign_to_dutch());
+        assert!(!fr_score1.is_likely_dutch());
+
+        let fr_score2 = calculate_language_percentages_with_locale(
+            "Il s'agit d'une phrase test qui doit être traduite en néerlandais.",
+            Some(&locale),
+        );
+        assert!(fr_score2.is_likely_french());
+        assert!(fr_score2.is_foreign_to_dutch());
+        assert!(!fr_score2.is_likely_dutch());
+    }
+}
+
+

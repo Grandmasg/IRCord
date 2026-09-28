@@ -159,3 +159,12 @@ lang_current = "🌐 [{title}] Deine aktuelle Sprachpräferenz ist '{lang}' (Sta
 lang_set_success = "✅ [{title}] Deine Sprachpräferenz wurde erfolgreich auf '{lang}' gesetzt!"
 lang_unknown = "⚠️ [{title}] Unbekannte Sprache '{input}'. Verfügbare Sprachen: {available}."
 lang_reset = "🔄 [{title}] Deine Sprachpräferenz wurde auf den Server-Standard ('{default}') zurückgesetzt."
+
+[language_detection]
+distinct_words = [
+    "der", "das", "und", "nicht", "sie", "wir", "ich", "ihr", "mein", "meine", "meinem", "meinen",
+    "meiner", "eine", "einer", "einem", "einen", "auch", "auf", "dem", "den", "sich", "aber", "wenn",
+    "können", "kann", "haben", "hat", "wird", "werden", "nach", "oder", "uns", "doch", "schon", "sehr",
+    "guten", "bitte", "danke", "kein", "keine", "immer", "jetzt", "deutsch", "deutschland", "vielleicht",
+    "welche", "dieser", "diese", "dieses", "hilfe"
+]

@@ -31,6 +31,7 @@ sha2 = "0.10"
 hex = "0.4"
 notify = "6.1"
 lru = "0.12"
+rand = "0.8"
 
 [dev-dependencies]
 tokio-test = "0.4"

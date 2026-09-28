@@ -7,6 +7,14 @@ use std::sync::{Arc, RwLock};
 use tracing::{debug, info, warn};
 
 #[derive(Debug, Deserialize, Default)]
+struct LanguageDetectionConfig {
+    #[serde(default)]
+    distinct_words: Vec<String>,
+    #[serde(default)]
+    casual_banter: Vec<String>,
+}
+
+#[derive(Debug, Deserialize, Default)]
 struct LocaleFile {
     #[serde(default)]
     meta: Option<HashMap<String, String>>,
@@ -14,6 +22,8 @@ struct LocaleFile {
     aliases: HashMap<String, Vec<String>>,
     #[serde(default)]
     messages: HashMap<String, String>,
+    #[serde(default)]
+    language_detection: Option<LanguageDetectionConfig>,
 }
 
 #[derive(Debug, Clone)]
@@ -24,6 +34,8 @@ pub struct LocaleManager {
     available_languages: Vec<String>,
     alias_to_canonical: HashMap<String, String>,
     all_messages: Arc<HashMap<String, HashMap<String, String>>>,
+    distinct_words: Arc<HashMap<String, Vec<String>>>,
+    casual_banter: Arc<Vec<String>>,
     fallback_messages: HashMap<String, String>,
     user_preferences: Arc<RwLock<HashMap<(String, String), String>>>,
 }
@@ -31,6 +43,8 @@ pub struct LocaleManager {
 const EMBEDDED_NL: &str = include_str!("../../locales/nl.toml");
 const EMBEDDED_EN: &str = include_str!("../../locales/en.toml");
 const EMBEDDED_DE: &str = include_str!("../../locales/de.toml");
+const EMBEDDED_FR: &str = include_str!("../../locales/fr.toml");
+const EMBEDDED_ES: &str = include_str!("../../locales/es.toml");
 
 impl LocaleManager {
     /// Loads all locale files from the specified directory (defaults to "locales")
@@ -39,9 +53,17 @@ impl LocaleManager {
         let mut alias_to_canonical = HashMap::new();
         let mut all_messages = HashMap::new();
         let mut available_languages = Vec::new();
+        let mut distinct_words = HashMap::new();
+        let mut casual_banter = Vec::new();
 
         // 0. Pre-load embedded compile-time defaults (fail-safe for Docker containers)
-        for (lang_code, content) in [("nl", EMBEDDED_NL), ("en", EMBEDDED_EN), ("de", EMBEDDED_DE)] {
+        for (lang_code, content) in [
+            ("nl", EMBEDDED_NL),
+            ("en", EMBEDDED_EN),
+            ("de", EMBEDDED_DE),
+            ("fr", EMBEDDED_FR),
+            ("es", EMBEDDED_ES),
+        ] {
             if let Ok(loc_file) = toml::from_str::<LocaleFile>(content) {
                 for (canonical, aliases) in loc_file.aliases {
                     alias_to_canonical.insert(canonical.to_lowercase(), canonical.clone());
@@ -51,6 +73,15 @@ impl LocaleManager {
                 }
                 all_messages.insert(lang_code.to_string(), loc_file.messages);
                 available_languages.push(lang_code.to_string());
+
+                if let Some(ld) = loc_file.language_detection {
+                    if !ld.distinct_words.is_empty() {
+                        distinct_words.insert(lang_code.to_string(), ld.distinct_words);
+                    }
+                    for b in ld.casual_banter {
+                        casual_banter.push(b.to_lowercase());
+                    }
+                }
             }
         }
 
@@ -72,7 +103,16 @@ impl LocaleManager {
                                         }
                                     }
                                     all_messages.insert(lang_code.clone(), loc_file.messages);
-                                    available_languages.push(lang_code);
+                                    available_languages.push(lang_code.clone());
+
+                                    if let Some(ld) = loc_file.language_detection {
+                                        if !ld.distinct_words.is_empty() {
+                                            distinct_words.insert(lang_code.clone(), ld.distinct_words);
+                                        }
+                                        for b in ld.casual_banter {
+                                            casual_banter.push(b.to_lowercase());
+                                        }
+                                    }
                                 }
                                 Err(e) => warn!("Error parsing locale file {:?}: {}", path, e),
                             }
@@ -84,6 +124,8 @@ impl LocaleManager {
 
         available_languages.sort();
         available_languages.dedup();
+        casual_banter.sort();
+        casual_banter.dedup();
 
         let fallback_messages = all_messages.get("en").cloned().unwrap_or_default();
         let active_language = default_lang.to_string();
@@ -95,6 +137,8 @@ impl LocaleManager {
             available_languages,
             alias_to_canonical,
             all_messages: Arc::new(all_messages),
+            distinct_words: Arc::new(distinct_words),
+            casual_banter: Arc::new(casual_banter),
             fallback_messages,
             user_preferences: Arc::new(RwLock::new(HashMap::new())),
         }
@@ -109,6 +153,8 @@ impl LocaleManager {
             available_languages: self.available_languages.clone(),
             alias_to_canonical: self.alias_to_canonical.clone(),
             all_messages: Arc::clone(&self.all_messages),
+            distinct_words: Arc::clone(&self.distinct_words),
+            casual_banter: Arc::clone(&self.casual_banter),
             fallback_messages: self.fallback_messages.clone(),
             user_preferences: Arc::clone(&self.user_preferences),
         }
@@ -169,6 +215,45 @@ impl LocaleManager {
         let key = (platform.to_lowercase(), user.to_lowercase());
         if let Ok(mut lock) = self.user_preferences.write() {
             lock.insert(key, lang.to_lowercase());
+        }
+    }
+
+    /// Returns all distinct stopwords categorized by language code
+    pub fn all_distinct_words(&self) -> Arc<HashMap<String, Vec<String>>> {
+        Arc::clone(&self.distinct_words)
+    }
+
+    /// Returns distinct stopwords for a specific language
+    pub fn get_distinct_words(&self, lang: &str) -> Option<&[String]> {
+        self.distinct_words.get(&lang.to_lowercase()).map(|v| v.as_slice())
+    }
+
+    /// Checks if a message consists entirely of casual banter, slang, or common IRC words
+    pub fn is_casual_banter(&self, text: &str) -> bool {
+        let lower = text.to_lowercase();
+        let words: Vec<&str> = lower
+            .split(|c: char| !c.is_alphabetic())
+            .filter(|w| !w.is_empty())
+            .collect();
+
+        if words.is_empty() {
+            return true;
+        }
+
+        // If banter list loaded from locales, check against that
+        if !self.casual_banter.is_empty() {
+            words.iter().all(|w| self.casual_banter.iter().any(|b| b == w))
+        } else {
+            // Built-in baseline fallback
+            const DEFAULT_SLANG: &[&str] = &[
+                "yeah", "yea", "yep", "nope", "yes", "no", "nah", "thanks", "thx", "ty", "pls", "please",
+                "okay", "ok", "k", "cool", "nice", "shit", "fuck", "damn", "wtf", "omg", "lol", "lmao",
+                "rofl", "gg", "gl", "hf", "bye", "hi", "hey", "hello", "good luck", "no problem", "np",
+                "afk", "brb", "wb", "link", "update", "browser", "motherfucker", "cheers", "proost",
+                "firefox", "chrome", "edge", "settings", "portainer", "docker", "server", "synology",
+                "gheghe", "haha", "hahaha", "hehe", "hehehe",
+            ];
+            words.iter().all(|w| DEFAULT_SLANG.contains(w))
         }
     }
 

@@ -37,6 +37,7 @@ use plugins::{
     wiki::WikipediaPlugin, youtube::YouTubePlugin, birthday::BirthdayPlugin,
     identity::IdentityPlugin, sysadmin::SysadminPlugin, rss::RssPlugin, tech::TechPlugin,
     rhai::RhaiPlugin, lang::LangPlugin, rephrase::RephrasePlugin, countdown::CountdownPlugin,
+    help::HelpPlugin, profile::ProfilePlugin, channel_ops::ChannelOpsPlugin, games::GamesPlugin,
     MessageEvent, PluginContext, PluginManager,
 };
 use utils::error_log::ErrorLogger;
@@ -160,6 +161,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         cfg.open_meteo.daily_limit,
     ));
 
+    // 7. Initialiseer communicatiekanalen (mpsc channels)
+    let (inbound_tx, mut inbound_rx) = mpsc::channel::<BridgeMessage>(256);
+    let (outbound_irc_tx, outbound_irc_rx) = mpsc::channel::<BridgeMessage>(256);
+    let (outbound_irc_raw_tx, outbound_irc_raw_rx) = mpsc::channel::<String>(128);
+
+    let plugins_info = Arc::new(std::sync::RwLock::new(Vec::new()));
     let plugin_ctx = PluginContext {
         db: pool.clone(),
         http: http_client.clone(),
@@ -171,9 +178,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         error_logger: error_logger.clone(),
         locale: locale_manager.clone(),
         open_meteo_quota: open_meteo_quota.clone(),
+        irc_raw_tx: Some(outbound_irc_raw_tx),
+        plugins_info: plugins_info.clone(),
     };
 
     let mut plugin_mgr = PluginManager::new(plugin_ctx);
+    plugin_mgr.register(Box::new(HelpPlugin));
+    plugin_mgr.register(Box::new(ProfilePlugin));
+    plugin_mgr.register(Box::new(ChannelOpsPlugin));
+    plugin_mgr.register(Box::new(GamesPlugin::new()));
     plugin_mgr.register(Box::new(LangPlugin));
     plugin_mgr.register(Box::new(WhatPulsePlugin::new()));
     plugin_mgr.register(Box::new(AiPlugin));
@@ -212,10 +225,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     info!("Plugin Manager geïnitialiseerd met {} actieve plugins", plugin_mgr.plugin_count());
     let plugin_mgr = Arc::new(plugin_mgr);
 
-    // 7. Initialiseer communicatiekanalen (mpsc channels)
-    let (inbound_tx, mut inbound_rx) = mpsc::channel::<BridgeMessage>(256);
-    let (outbound_irc_tx, outbound_irc_rx) = mpsc::channel::<BridgeMessage>(256);
-
     let bridge_router = Arc::new(BridgeRouter::with_prefixes(
         cfg.channels.clone(),
         cfg.bridge.lru_cache_capacity,
@@ -249,6 +258,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         cfg_arc.clone(),
         inbound_tx.clone(),
         outbound_irc_rx,
+        outbound_irc_raw_rx,
         shutdown_token.clone(),
     );
     tokio::spawn(async move {

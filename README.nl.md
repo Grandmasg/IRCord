@@ -123,6 +123,19 @@ Alle commando's werken standaard met zowel een uitroepteken (`!`) als een punt (
 
 | Plugin | Triggers | Beschrijving | Voorbeeld |
 |---|---|---|---|
+| **Interactieve Help** | `!help`, `!commands`, `!cmd` | Toont het interactieve categorie-overzicht of gedetailleerde help over een specifiek commando. | `!help`, `!help weer`, `!help roulette` |
+| **Profielen & Rang** | `!profiel`, `!profile`, `!userinfo` | Rijk overzichtskaartje: Karma, WhatPulse, Verjaardag, Discord-koppeling, Chattaal en Aantal regels getypt. | `!profiel`, `!profiel Klaas` |
+| | `!top [karma\|lines]` | Toont de top 5 meest gewaardeerde chatters (karma) óf de actiefste chatters uit de chatgeschiedenis. | `!top`, `!top lines` |
+| **Kanaalbeheer (ChanOp)** | `!kick <nick> [reden]` | Schopt een gebruiker uit het IRC-kanaal (ChanOps / Owner only). | `!kick VervelendeUser Gedraag je` |
+| | `!ban <nick\|mask>`, `!kb` | Bant een gebruiker via hostmask (`+b`) of voert een instant kickban uit. | `!ban TrollUser`, `!kb TrollUser Spammen` |
+| | `!op`, `!deop` | Verleent of ontneemt de operatorstatus (`+/-o`). | `!op Pietje`, `!deop Pietje` |
+| | `!voice`, `!devoice` | Verleent of ontneemt de voicestatus (`+/-v`). | `!voice Nieuweling` |
+| | `!topic <nieuw topic>` | Wijzigt direct het officiële IRC-kanaaltopic en bewaart de geschiedenis. | `!topic Welkom in #DeApen! 🐒` |
+| **Klassieke Minigames** | `!roulette` | Russisch roulette met een 6-schots revolver. *KLIK*... leeg! Bij *BANG!* 💥 word je gekickt! | `!roulette` |
+| | `!8ball <vraag>` | Vraag advies aan de legendarische Magic 8-Ball. | `!8ball Gaan we vanavond winnen?` |
+| | `!roll [NdM\|d20\|2d6]` | Werpt dobbelstenen met individuele worpen en het totaal. | `!roll`, `!roll 2d6`, `!roll d20` |
+| | `!flip`, `!munt` | Werpt een munt op (Kop of Munt). | `!flip` |
+| | `!choose <a \| b \| c>` | Laat de bot willekeurig kiezen uit meerdere opties. | `!choose Pizza \| Sushi \| Friet` |
 | **WhatPulse** | `!wp`, `!whatpulse` | Haalt team- of individuele statistieken op van WhatPulse. Koppel nicks via `!wp link`. | `!wp`, `!wp Gebruiker`, `!wp link Gebruiker` |
 | **AI Suite** | `!ai` | Stelt een vraag aan de lokale FreeToken LLM met kanaalcontext. | `!ai Leg uit wat een monad is.` |
 | | `!ai models` | Toont het actieve model en alle beschikbare modellen op de lokale AI-server. | `!ai models` |
@@ -164,7 +177,7 @@ Alle commando's werken standaard met zowel een uitroepteken (`!`) als een punt (
 | **Urban Dictionary**| `!ud`, `!urban` | Zoekt straattaal, slang en internet-definities inclusief praktijkvoorbeeld. | `!ud yeet`, `!ud poggers` |
 | **Minecraft Status**| `!mc`, `!minecraft` | Pingt een Minecraft Java server voor online status, actuele spelers en MOTD. | `!mc play.hypixel.net` |
 | **Wereldtijd** | `!tijd`, `!time`, `!klok` | Toont de actuele lokale tijd en datum in een wereldstad of land. | `!tijd Tokyo`, `!tijd New York` |
-| **Verjaardagen** | `!bday`, `!verjaardag` | Registreer verjaardagen (`!bday set DD-MM[-JJJJ]`) en bekijk naderende verjaardagen (`!bday next`). De bot feliciteert jarigen automatisch 's ochtends met leeftijd en feestelijke felicitatie! | `!bday set 24-09`, `!bday next`, `!bday Klaas` |
+| **Verjaardagen** | `!bday`, `!verjaardag`, `!jarig` | Registreer verjaardagen (`!bday set DD-MM[-JJJJ]`) en bekijk naderende verjaardagen (`!bday next` of `!jarig`). De bot feliciteert jarigen automatisch 's ochtends met leeftijd en feestelijke felicitatie! | `!bday set 24-09`, `!jarig next`, `!jarig Klaas` |
 | **Admin & Logs** | `!status`, `!ping`, `!stats` | Geeft uptime, actieve plugins, database- en geheugenstatistieken weer. | `!status` |
 | | `!errors`, `!errorlog` | Toont de laatste waarschuwingen, plugin-fouten of panics (operators/owner). Gebruik `!errors clear` om te legen. | `!errors 5` |
 | **Identiteit & Bridge**| `!link`, `!whois` | Koppel IRC nick en Discord account met 6-cijferige OTP code. Bekijk profiel, gekoppelde identiteit, karma en verjaardag. | `!link @Klaas`, `!link verify 123456`, `!whois Klaas` |

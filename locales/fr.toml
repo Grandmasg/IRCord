@@ -1,0 +1,29 @@
+[meta]
+name = "Français"
+code = "fr"
+
+[aliases]
+weather = ["meteo", "temps"]
+time = ["heure", "temps"]
+currency = ["devise", "monnaie"]
+translate = ["traduire", "traduction", "tr"]
+birthday = ["anniversaire", "bday"]
+lang = ["langue", "lang", "language"]
+
+[messages]
+weather_title = "Météo"
+lang_title = "Langue"
+
+[language_detection]
+distinct_words = [
+    "le", "la", "les", "un", "une", "des", "du", "de", "d", "l", "ce", "cet", "cette", "ces",
+    "ceci", "cela", "est", "sont", "été", "être", "avoir", "ai", "a", "ont", "il", "ils", "elle",
+    "elles", "on", "nous", "vous", "je", "tu", "qui", "que", "quoi", "dont", "dans", "pour", "par",
+    "sur", "avec", "sans", "sous", "mais", "ou", "et", "donc", "ni", "car", "pas", "plus", "ne",
+    "en", "tout", "tous", "toute", "toutes", "faire", "fait", "comme", "aussi", "bien", "très",
+    "même", "autre", "autres", "doit", "doivent", "peut", "peuvent", "bonjour", "merci", "salut",
+    "comment", "pourquoi", "quand", "toujours", "mon", "ton", "son", "notre", "votre", "leur"
+]
+casual_banter = [
+    "oui", "non", "merci", "salut", "bonjour", "coucou", "stp", "svp", "mdr", "ptdr"
+]

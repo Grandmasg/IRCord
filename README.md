@@ -125,6 +125,19 @@ All commands accept either an exclamation mark (`!`) or a period (`.`) by defaul
 
 | Plugin | Canonical & Alias Triggers | Description | Example |
 |---|---|---|---|
+| **Interactive Help** | `!help`, `!commands`, `!cmd` | Displays the interactive category overview or detailed help for a specific command. | `!help`, `!help weather`, `!help roulette` |
+| **Profile & Leaderboards** | `!profiel`, `!profile`, `!userinfo` | Rich profile card: Karma, WhatPulse, Birthday, Discord link, Chat Language, and Messages logged. | `!profile`, `!profile Alice` |
+| | `!top [karma\|lines]` | Shows top 5 karma leaders or most active chatters in channel history. | `!top`, `!top lines` |
+| **Channel Ops (ChanOp)** | `!kick <nick> [reason]` | Kicks a user from the IRC channel (ChanOps / Owner only). | `!kick TrollUser Please behave` |
+| | `!ban <nick\|mask>`, `!kb` | Bans a user via hostmask (`+b`) or performs an instant kickban. | `!ban TrollUser`, `!kb TrollUser Spamming` |
+| | `!op`, `!deop` | Grants or revokes channel operator status (`+/-o`). | `!op Alice`, `!deop Alice` |
+| | `!voice`, `!devoice` | Grants or revokes voice status (`+/-v`). | `!voice Bob` |
+| | `!topic <new topic>` | Directly updates the official IRC channel topic and tracks history. | `!topic Welcome to #DeApen! 🐒` |
+| **Classic Minigames** | `!roulette` | Russian roulette with a 6-chamber revolver. *CLICK*... safe! On *BANG!* 💥 you get kicked! | `!roulette` |
+| | `!8ball <question>` | Ask advice from the classic Magic 8-Ball. | `!8ball Will we win tonight?` |
+| | `!roll [NdM\|d20\|2d6]` | Rolls dice with individual roll breakdown and total sum. | `!roll`, `!roll 2d6`, `!roll d20` |
+| | `!flip`, `!coin` | Flips a coin (Heads or Tails). | `!flip` |
+| | `!choose <a \| b \| c>` | Randomly selects one choice from multiple options. | `!choose Pizza \| Sushi \| Burgers` |
 | **WhatPulse** | `!wp`, `!whatpulse` | Team or user keystrokes and click stats. Link nick with `!wp link`. | `!wp`, `!wp Alice`, `!wp link Alice` |
 | **AI Suite** | `!ai` | Ask a question to the local FreeToken LLM with channel context. | `!ai Explain monads simply.` |
 | | `!ai models` | Displays the active model and all available models on the local AI server. | `!ai models` |
@@ -166,7 +179,7 @@ All commands accept either an exclamation mark (`!`) or a period (`.`) by defaul
 | **Poll** | `!poll` | Interactive multi-choice channel poll. | `!poll Pizza tonight? \| Yes \| No` |
 | **Remind** | `!remind`, `!reminder`, `!remindme` | Sets a timer reminder. | `!remind 10m Check server backup!` |
 | **Alias** | `!alias` | Custom channel alias management. | `!alias add docs https://rust-lang.org` |
-| **Birthdays** | `!bday`, `!verjaardag` | Register birthdays (`!bday set DD-MM[-YYYY]`), view upcoming birthdays (`!bday next`), or check a friend's date (`!bday nick`). The bot automatically sends morning greetings with age and cake! | `!bday set 24-09`, `!bday next`, `!bday Alice` |
+| **Birthdays** | `!bday`, `!verjaardag`, `!jarig` | Register birthdays (`!bday set DD-MM[-YYYY]`), view upcoming birthdays (`!bday next` or `!jarig`), or check a friend's date (`!jarig nick`). The bot automatically sends morning greetings with age and cake! | `!bday set 24-09`, `!jarig next`, `!jarig Alice` |
 | **Admin & Logs**| `!status`, `!ping`, `!stats` | Reports uptime, active plugins, memory, and database metrics. | `!status` |
 | | `!errors`, `!errorlog` | Shows recent errors or panics in PM or `#bot-logs`. Use `clear` to reset. | `!errors 5`, `!errors clear` |
 | **Identity & Bridge**| `!link`, `!whois` | Link IRC nick and Discord account via 6-digit OTP code. View profiles, linked identities, karma, and birthdays. | `!link @Alice`, `!link verify 123456`, `!whois Alice` |

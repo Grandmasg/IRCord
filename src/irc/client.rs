@@ -40,6 +40,7 @@ pub struct IrcClient {
     config: Arc<Config>,
     inbound_tx: Sender<BridgeMessage>,
     outbound_rx: Receiver<BridgeMessage>,
+    raw_cmd_rx: Receiver<String>,
     shutdown_token: CancellationToken,
 }
 
@@ -48,12 +49,14 @@ impl IrcClient {
         config: Arc<Config>,
         inbound_tx: Sender<BridgeMessage>,
         outbound_rx: Receiver<BridgeMessage>,
+        raw_cmd_rx: Receiver<String>,
         shutdown_token: CancellationToken,
     ) -> Self {
         Self {
             config,
             inbound_tx,
             outbound_rx,
+            raw_cmd_rx,
             shutdown_token,
         }
     }
@@ -163,7 +166,7 @@ impl IrcClient {
                         continue;
                     }
 
-                    // SASL Succes (903) of Fout (904, 905)
+                    // SASL Succes (903) of Fout (904, 905) of Nick in use (433)
                     let parts: Vec<&str> = raw.split_whitespace().collect();
                     if parts.len() > 1 {
                         let numeric = parts[1];
@@ -174,6 +177,11 @@ impl IrcClient {
                         } else if numeric == "904" || numeric == "905" {
                             warn!("SASL authenticatie mislukt code ({}). Doorgaan als unauthenticated...", numeric);
                             writer.write_all(format!("CAP END\r\nNICK {}\r\nUSER {} 0 * :IRCord Hybrid Bot\r\n", nick, nick).as_bytes()).await?;
+                            continue;
+                        } else if numeric == "433" {
+                            let alt_nick = format!("{}_", nick);
+                            warn!("IRC Nick '{}' reeds in gebruik! Proberen met alternatief: '{}'...", nick, alt_nick);
+                            writer.write_all(format!("NICK {}\r\n", alt_nick).as_bytes()).await?;
                             continue;
                         }
                     }
@@ -193,6 +201,28 @@ impl IrcClient {
                         }
                     }
 
+                    // KICK afhandeling: Auto-rejoin bij kick van de bot
+                    if parts.len() > 3 && parts[1] == "KICK" {
+                        let kicked_chan = parts[2];
+                        let kicked_nick = parts[3];
+                        if kicked_nick.eq_ignore_ascii_case(nick) || kicked_nick.eq_ignore_ascii_case(&format!("{}_", nick)) {
+                            warn!("Bot werd gekickt uit {}! Auto-rejoin over 3 seconden...", kicked_chan);
+                            let chan_clone = kicked_chan.to_string();
+                            tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+                            writer.write_all(format!("JOIN {}\r\n", chan_clone).as_bytes()).await?;
+                            continue;
+                        }
+                    }
+
+                    // INVITE afhandeling: automatische join wanneer uitgenodigd
+                    if parts.len() > 3 && parts[1] == "INVITE" {
+                        let invited_chan = parts[3].trim_start_matches(':');
+                        let inviter = parts[0].trim_start_matches(':').split('!').next().unwrap_or("onbekend");
+                        info!("Bot uitgenodigd voor kanaal {} door {}! Auto-joinen...", invited_chan, inviter);
+                        writer.write_all(format!("JOIN {}\r\n", invited_chan).as_bytes()).await?;
+                        continue;
+                    }
+
                     // PRIVMSG afhandeling
                     if parts.len() > 3 && parts[1] == "PRIVMSG" {
                         let prefix = parts[0].trim_start_matches(':');
@@ -202,6 +232,43 @@ impl IrcClient {
                         // Parse de eigenlijke chattekst (alles na de dubbelepunt van arg 4)
                         if let Some(colon_idx) = raw[1..].find(':') {
                             let text = &raw[colon_idx + 2..];
+
+                            // CTCP Queries afhandelen (bijv. VERSION, PING, TIME)
+                            let trimmed_text = text.trim();
+                            if trimmed_text.starts_with('\x01') && trimmed_text.ends_with('\x01') {
+                                let ctcp_content = trimmed_text.trim_matches('\x01').trim();
+                                let mut ctcp_parts = ctcp_content.splitn(2, ' ');
+                                let ctcp_tag = ctcp_parts.next().unwrap_or("").to_uppercase();
+                                let ctcp_arg = ctcp_parts.next().unwrap_or("");
+
+                                match ctcp_tag.as_str() {
+                                    "VERSION" => {
+                                        info!("CTCP VERSION ontvangen van {}", sender_nick);
+                                        let reply = format!("NOTICE {} :\x01VERSION IRCord v2.2.0 Hybrid Bridge & Bot (Rust) by Grandmasg\x01\r\n", sender_nick);
+                                        writer.write_all(reply.as_bytes()).await?;
+                                        continue;
+                                    }
+                                    "PING" => {
+                                        info!("CTCP PING ontvangen van {}", sender_nick);
+                                        let reply = format!("NOTICE {} :\x01PING {}\x01\r\n", sender_nick, ctcp_arg);
+                                        writer.write_all(reply.as_bytes()).await?;
+                                        continue;
+                                    }
+                                    "TIME" => {
+                                        info!("CTCP TIME ontvangen van {}", sender_nick);
+                                        let now_str = chrono::Utc::now().to_rfc2822();
+                                        let reply = format!("NOTICE {} :\x01TIME {}\x01\r\n", sender_nick, now_str);
+                                        writer.write_all(reply.as_bytes()).await?;
+                                        continue;
+                                    }
+                                    "ACTION" => {
+                                        // Emote (/me), doorlaten naar bridge!
+                                    }
+                                    _ => {
+                                        continue;
+                                    }
+                                }
+                            }
 
                             if !sender_nick.eq_ignore_ascii_case(nick) {
                                 let bridge_msg = BridgeMessage {
@@ -216,6 +283,18 @@ impl IrcClient {
 
                                 let _ = self.inbound_tx.send(bridge_msg).await;
                             }
+                        }
+                    }
+                }
+
+                // Uitgaande ruwe IRC commando's (KICK, MODE, TOPIC, JOIN etc.)
+                raw_cmd = self.raw_cmd_rx.recv() => {
+                    if let Some(cmd) = raw_cmd {
+                        let clean = cmd.trim();
+                        if !clean.is_empty() {
+                            limiter.wait_for_slot().await;
+                            let line = format!("{}\r\n", clean);
+                            let _ = writer.write_all(line.as_bytes()).await;
                         }
                     }
                 }

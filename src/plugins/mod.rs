@@ -32,12 +32,16 @@ pub mod rhai;
 pub mod lang;
 pub mod rephrase;
 pub mod countdown;
+pub mod help;
+pub mod profile;
+pub mod channel_ops;
+pub mod games;
 
 use async_trait::async_trait;
 use reqwest::Client;
 use sqlx::SqlitePool;
 use std::panic::AssertUnwindSafe;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use tracing::{error, info, warn};
 
 use crate::ai::freetoken::FreeTokenClient;
@@ -48,6 +52,13 @@ use crate::config::Config;
 use crate::utils::error_log::ErrorLogger;
 use crate::utils::i18n::LocaleManager;
 use crate::utils::quota::ApiQuotaGovernor;
+
+#[derive(Clone, Debug)]
+pub struct PluginDescriptor {
+    pub name: String,
+    pub triggers: Vec<String>,
+    pub help: String,
+}
 
 #[derive(Clone)]
 pub struct PluginContext {
@@ -61,6 +72,16 @@ pub struct PluginContext {
     pub error_logger: Arc<ErrorLogger>,
     pub locale: Arc<LocaleManager>,
     pub open_meteo_quota: Arc<ApiQuotaGovernor>,
+    pub irc_raw_tx: Option<tokio::sync::mpsc::Sender<String>>,
+    pub plugins_info: Arc<RwLock<Vec<PluginDescriptor>>>,
+}
+
+impl PluginContext {
+    pub async fn send_irc_raw(&self, cmd: impl Into<String>) {
+        if let Some(ref tx) = self.irc_raw_tx {
+            let _ = tx.send(cmd.into()).await;
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -115,6 +136,14 @@ impl PluginManager {
 
     pub fn register(&mut self, plugin: Box<dyn Plugin>) {
         info!("Plugin geregistreerd: [{}]", plugin.name());
+        let desc = PluginDescriptor {
+            name: plugin.name().to_string(),
+            triggers: plugin.triggers().iter().map(|s| s.to_string()).collect(),
+            help: plugin.help().to_string(),
+        };
+        if let Ok(mut lock) = self.ctx.plugins_info.write() {
+            lock.push(desc);
+        }
         self.plugins.push(plugin);
     }
 

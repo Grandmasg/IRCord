@@ -1,0 +1,29 @@
+[meta]
+name = "Español"
+code = "es"
+
+[aliases]
+weather = ["clima", "tiempo"]
+time = ["hora", "tiempo"]
+currency = ["moneda", "divisa"]
+translate = ["traducir", "tr"]
+birthday = ["cumpleaños", "cumple", "bday"]
+lang = ["idioma", "lengua", "lang"]
+
+[messages]
+weather_title = "Clima"
+lang_title = "Idioma"
+
+[language_detection]
+distinct_words = [
+    "el", "la", "los", "las", "un", "una", "unos", "unas", "de", "del", "al", "en", "que", "por",
+    "para", "con", "sin", "sobre", "entre", "hasta", "desde", "pero", "sino", "aunque", "como",
+    "este", "esta", "estos", "estas", "ese", "esa", "esos", "esas", "aquel", "aquella", "esto", "eso",
+    "todo", "todos", "toda", "todas", "muy", "mucho", "más", "menos", "bien", "mal", "hola",
+    "gracias", "amigo", "amigos", "donde", "cuando", "porque", "bueno", "buenos", "buenas", "también",
+    "nosotros", "ustedes", "ellos", "ellas", "favor", "hacer", "hace", "puede", "pueden", "ser",
+    "es", "son", "era", "fueron", "estar", "está", "están", "tiene", "tienen", "haber", "hay"
+]
+casual_banter = [
+    "si", "no", "hola", "adios", "gracias", "porfa", "jaja", "jajaja"
+]

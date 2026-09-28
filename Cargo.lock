@@ -1363,6 +1363,7 @@ dependencies = [
  "irc",
  "lru",
  "notify",
+ "rand 0.8.8",
  "regex",
  "reqwest",
  "rhai",

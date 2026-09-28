@@ -159,3 +159,25 @@ lang_current = "🌐 [{title}] Your current language is '{lang}' (default: '{def
 lang_set_success = "✅ [{title}] Your language preference has been set to '{lang}'!"
 lang_unknown = "⚠️ [{title}] Unknown language '{input}'. Available languages: {available}."
 lang_reset = "🔄 [{title}] Your language preference has been reset to the server default ('{default}')."
+
+[language_detection]
+distinct_words = [
+    "the", "and", "of", "to", "you", "that", "it", "he", "for", "are", "with", "his", "they",
+    "at", "be", "this", "have", "from", "or", "one", "had", "by", "but", "not", "what", "all",
+    "were", "when", "your", "can", "said", "there", "use", "each", "which", "she", "do", "how",
+    "their", "if", "will", "up", "other", "about", "out", "many", "then", "them", "these", "so",
+    "some", "her", "would", "make", "like", "him", "into", "time", "has", "look", "two", "more",
+    "write", "go", "see", "number", "way", "could", "people", "my", "than", "first", "water",
+    "been", "call", "who", "its", "find", "down", "day", "did", "get", "come", "made", "may",
+    "part", "should", "does", "because", "please", "thanks", "thank", "anyone", "everyone",
+    "someone", "nothing", "something", "everything", "where", "why", "without", "within",
+    "between", "through", "during", "before", "after", "above", "below", "under", "couldn't",
+    "wouldn't", "shouldn't", "don't", "doesn't", "didn't", "won't", "can't", "isn't", "aren't"
+]
+casual_banter = [
+    "yeah", "yea", "yep", "nope", "yes", "no", "nah", "thanks", "thx", "ty", "pls", "please",
+    "okay", "ok", "k", "cool", "nice", "shit", "fuck", "damn", "wtf", "omg", "lol", "lmao",
+    "rofl", "gg", "gl", "hf", "bye", "hi", "hey", "hello", "good luck", "no problem", "np",
+    "afk", "brb", "wb", "link", "update", "browser", "cheers",
+    "firefox", "chrome", "edge", "settings", "portainer", "docker", "server", "synology"
+]

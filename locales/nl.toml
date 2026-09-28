@@ -16,7 +16,7 @@ karma = ["karma", "reputatie"]
 afk = ["afk", "weg", "brb"]
 poll = ["peiling", "stemming", "poll"]
 remind = ["herinnering", "alarm", "remind", "remindme"]
-birthday = ["verjaardag", "bday"]
+birthday = ["verjaardag", "bday", "jarig"]
 wiki = ["wiki", "encyclopedie"]
 google = ["zoek", "google", "g", "search"]
 minecraft = ["mc", "minecraft", "mcserver"]
@@ -159,3 +159,27 @@ lang_current = "🌐 [{title}] Jouw huidige taalvoorkeur is '{lang}' (standaard:
 lang_set_success = "✅ [{title}] Je taalvoorkeur is succesvol ingesteld op '{lang}'!"
 lang_unknown = "⚠️ [{title}] Onbekende taal '{input}'. Beschikbare talen: {available}."
 lang_reset = "🔄 [{title}] Je taalvoorkeur is gereset naar de kanaal-/serverstandaard ('{default}')."
+
+[language_detection]
+distinct_words = [
+    "de", "het", "een", "van", "ik", "te", "dat", "die", "voor", "met", "niet", "om", "maar", "er",
+    "omdat", "als", "heeft", "heb", "hebt", "hebben", "zijn", "waren", "wordt", "werd", "worden",
+    "gehad", "aan", "bij", "ook", "tot", "uit", "over", "naar", "dan", "wel", "dus", "nu", "geen",
+    "nog", "zo", "wat", "wie", "waar", "wanneer", "waarom", "hoe", "iets", "veel", "meer", "minder",
+    "wij", "je", "jij", "jouw", "ze", "zij", "haar", "hun", "hij", "hem", "ons", "onze", "jullie",
+    "zal", "zullen", "zou", "zouden", "kan", "kunnen", "kon", "konden", "moet", "moeten", "moest",
+    "moesten", "mag", "mogen", "mocht", "mochten", "toch", "even", "eens", "weer", "goed", "vind",
+    "vindt", "terug", "hier", "daar", "deze", "dit", "welk", "welke", "alles", "niets", "erg",
+    "heel", "groot", "klein", "ja", "nee", "zelf", "geweest", "me", "mijn", "elkaar", "samen",
+    "toen", "altijd", "nooit", "graag", "zien", "kijken", "doen", "gedaan", "zeggen", "gezegd",
+    "gaan", "ging", "gegaan", "staan", "stond", "gestaan", "weet", "weten", "wist", "geweten",
+    "paswoord", "wachtwoord", "overschreven", "verkeerde", "wellicht", "handig", "ding", "moederloos"
+]
+casual_banter = [
+    "yeah", "yea", "yep", "nope", "yes", "no", "nah", "thanks", "thx", "ty", "pls", "please",
+    "okay", "ok", "k", "cool", "nice", "shit", "fuck", "damn", "wtf", "omg", "lol", "lmao",
+    "rofl", "gg", "gl", "hf", "bye", "hi", "hey", "hello", "good luck", "no problem", "np",
+    "afk", "brb", "wb", "link", "update", "browser", "motherfucker", "cheers", "proost",
+    "firefox", "chrome", "edge", "settings", "portainer", "docker", "server", "synology",
+    "gheghe", "haha", "hahaha", "hehe", "hehehe"
+]
