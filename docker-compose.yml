@@ -54,10 +54,17 @@ services:
       - -c
       - |
         echo "=========================================================="
-        echo "⏳ IRCord Installer: downloading AI model '$${FREETOKEN_MODEL}'..."
+        echo "⏳ IRCord Installer: checking AI model '$${FREETOKEN_MODEL}'..."
         echo "=========================================================="
-        ollama pull "$${FREETOKEN_MODEL}"
-        echo "✅ Model '$${FREETOKEN_MODEL}' is ready for use!"
+        if ollama list | grep -q "$${FREETOKEN_MODEL}"; then
+          echo "✅ Model '$${FREETOKEN_MODEL}' is already downloaded. Skipping download!"
+        else
+          echo "📥 Downloading model '$${FREETOKEN_MODEL}'..."
+          ollama pull "$${FREETOKEN_MODEL}"
+        fi
+        echo "🔥 Pre-warming model in GPU VRAM..."
+        ollama run "$${FREETOKEN_MODEL}" "ping" > /dev/null 2>&1 || true
+        echo "🚀 Model '$${FREETOKEN_MODEL}' is ready in GPU VRAM!"
 
   # 3. IRCord Hybrid IRC-Discord Bot Daemon
   ircord:
