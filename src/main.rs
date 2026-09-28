@@ -186,7 +186,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     plugin_mgr.register(Box::new(CryptoPlugin));
     plugin_mgr.register(Box::new(UrbanDictionaryPlugin));
     plugin_mgr.register(Box::new(MinecraftPlugin));
-    plugin_mgr.register(Box::new(TranslatePlugin));
+    plugin_mgr.register(Box::new(TranslatePlugin::new()));
     plugin_mgr.register(Box::new(TimePlugin));
     plugin_mgr.register(Box::new(BirthdayPlugin));
     plugin_mgr.register(Box::new(IdentityPlugin::new()));

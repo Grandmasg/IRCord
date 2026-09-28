@@ -1,8 +1,101 @@
-use super::{CommandEvent, Plugin, PluginContext};
+use super::{CommandEvent, MessageEvent, Plugin, PluginContext};
 use async_trait::async_trait;
 use serde::Deserialize;
+use std::collections::HashMap;
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
 
-pub struct TranslatePlugin;
+#[derive(Clone, Debug)]
+struct ChannelSettingsCache {
+    language_code: String,
+    language_name: String,
+    auto_translate: bool,
+    last_triggered: Instant,
+}
+
+pub struct TranslatePlugin {
+    channel_cache: Mutex<HashMap<String, ChannelSettingsCache>>,
+}
+
+impl TranslatePlugin {
+    pub fn new() -> Self {
+        Self {
+            channel_cache: Mutex::new(HashMap::new()),
+        }
+    }
+
+    async fn get_channel_settings(&self, ctx: &PluginContext, platform: &str, channel: &str) -> ChannelSettingsCache {
+        let key = channel.to_lowercase();
+        {
+            let lock = self.channel_cache.lock().unwrap();
+            if let Some(cached) = lock.get(&key) {
+                return cached.clone();
+            }
+        }
+
+        // Query database
+        let row: Option<(String, bool)> = sqlx::query_as(
+            "SELECT language, auto_translate FROM channel_settings WHERE LOWER(channel) = LOWER(?)"
+        )
+        .bind(channel)
+        .fetch_optional(&ctx.db)
+        .await
+        .unwrap_or(None);
+
+        let (code, auto_tr) = if let Some((lang, autotr)) = row {
+            (lang, autotr)
+        } else {
+            let default_lang = ctx.config.channel_language(platform, channel);
+            (default_lang.to_string(), false)
+        };
+
+        let (lang_code, lang_name) = resolve_lang(&code).unwrap_or(("NL".into(), "Dutch".into()));
+
+        let entry = ChannelSettingsCache {
+            language_code: lang_code,
+            language_name: lang_name,
+            auto_translate: auto_tr,
+            last_triggered: Instant::now() - Duration::from_secs(60),
+        };
+
+        let mut lock = self.channel_cache.lock().unwrap();
+        lock.insert(key, entry.clone());
+        entry
+    }
+
+    fn update_channel_settings(&self, channel: &str, lang_code: String, lang_name: String, auto_translate: bool) {
+        let key = channel.to_lowercase();
+        let mut lock = self.channel_cache.lock().unwrap();
+        lock.insert(key, ChannelSettingsCache {
+            language_code: lang_code,
+            language_name: lang_name,
+            auto_translate,
+            last_triggered: Instant::now() - Duration::from_secs(60),
+        });
+    }
+
+    fn check_and_set_cooldown(&self, channel: &str, cooldown_secs: u64) -> bool {
+        let key = channel.to_lowercase();
+        let mut lock = self.channel_cache.lock().unwrap();
+        let now = Instant::now();
+
+        if let Some(entry) = lock.get_mut(&key) {
+            if now.duration_since(entry.last_triggered) < Duration::from_secs(cooldown_secs) {
+                return false;
+            }
+            entry.last_triggered = now;
+            return true;
+        }
+
+        true
+    }
+}
+
+impl Default for TranslatePlugin {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 #[derive(Deserialize)]
 struct MyMemoryResponse {
@@ -61,7 +154,6 @@ fn resolve_lang(input: &str) -> Option<(String, String)> {
         "lt" | "lit" | "lithuanian" | "litouws" => ("LT", "Lithuanian"),
         "ca" | "cat" | "catalan" | "catalaans" => ("CA", "Catalan"),
         _ => {
-            // Als het een 2- of 3-letterige ISO code is, accepteer deze dynamisch
             if (s.len() == 2 || s.len() == 3) && s.chars().all(|c| c.is_ascii_alphabetic()) {
                 return Some((s.to_uppercase(), s.to_uppercase()));
             }
@@ -78,11 +170,11 @@ impl Plugin for TranslatePlugin {
     }
 
     fn triggers(&self) -> &[&'static str] {
-        &["translate", "tr", "vertaal"]
+        &["translate", "tr", "vertaal", "chatlang", "kanaaltaal", "autotr", "autotranslate"]
     }
 
     fn help(&self) -> &'static str {
-        "!translate [taalcode/taalpaar] <tekst> - Vertaalt tekst (bijv. !tr de Hallo, !tr nl:en Hoi, !tr sp Buenos días)"
+        "!tr [taal] <tekst> | !chatlang [nl/en/de] | !autotr [on/off/status] - Vertalingen en realtime kanaalvertaling"
     }
 
     async fn on_command(
@@ -90,7 +182,103 @@ impl Plugin for TranslatePlugin {
         ctx: &PluginContext,
         cmd: &CommandEvent,
     ) -> Result<Option<String>, Box<dyn std::error::Error + Send + Sync>> {
+        let trigger = cmd.trigger.to_lowercase();
         let args = cmd.args.trim();
+
+        // 1. Kanaal-instelling voor chattaal: !chatlang / !kanaaltaal
+        if trigger == "chatlang" || trigger == "kanaaltaal" {
+            let current_settings = self.get_channel_settings(ctx, &cmd.platform, &cmd.channel).await;
+
+            if args.is_empty() {
+                let status_str = if current_settings.auto_translate { "AAN" } else { "UIT" };
+                return Ok(Some(format!(
+                    "🌐 [Kanaalinstelling] Standaard chattaal voor {} is \x02{} ({})\x02. Auto-vertaling staat \x02{}\x02 (wijzig met !chatlang <taal> of !autotr on/off).",
+                    cmd.channel, current_settings.language_name, current_settings.language_code, status_str
+                )));
+            }
+
+            if !cmd.is_operator && !cmd.is_owner {
+                return Ok(Some("⚠️ Alleen operators en de bot owner kunnen de standaard kanaaltaal aanpassen.".into()));
+            }
+
+            if let Some((code, name)) = resolve_lang(args) {
+                sqlx::query(
+                    r#"
+                    INSERT INTO channel_settings (channel, language, auto_translate)
+                    VALUES (?, ?, 0)
+                    ON CONFLICT(channel) DO UPDATE SET language = excluded.language, updated_at = CURRENT_TIMESTAMP
+                    "#
+                )
+                .bind(&cmd.channel)
+                .bind(&code)
+                .execute(&ctx.db)
+                .await?;
+
+                self.update_channel_settings(&cmd.channel, code.clone(), name.clone(), current_settings.auto_translate);
+                return Ok(Some(format!(
+                    "✅ [Kanaalinstelling] Standaard chattaal voor {} is nu ingesteld op \x02{} ({})\x02.",
+                    cmd.channel, name, code
+                )));
+            } else {
+                return Ok(Some(format!("⚠️ Onbekende taalcode '{args}'. Gebruik bijv. nl, en, de, es, fr.")));
+            }
+        }
+
+        // 2. Realtime auto-vertaling in- of uitschakelen: !autotr / !autotranslate
+        if trigger == "autotr" || trigger == "autotranslate" {
+            let current_settings = self.get_channel_settings(ctx, &cmd.platform, &cmd.channel).await;
+
+            if args.eq_ignore_ascii_case("on") || args.eq_ignore_ascii_case("aan") || args.eq_ignore_ascii_case("1") {
+                if !cmd.is_operator && !cmd.is_owner {
+                    return Ok(Some("⚠️ Alleen operators en de bot owner kunnen auto-vertaling in- of uitschakelen.".into()));
+                }
+
+                sqlx::query(
+                    r#"
+                    INSERT INTO channel_settings (channel, language, auto_translate)
+                    VALUES (?, ?, 1)
+                    ON CONFLICT(channel) DO UPDATE SET auto_translate = 1, updated_at = CURRENT_TIMESTAMP
+                    "#
+                )
+                .bind(&cmd.channel)
+                .bind(&current_settings.language_code)
+                .execute(&ctx.db)
+                .await?;
+
+                self.update_channel_settings(&cmd.channel, current_settings.language_code.clone(), current_settings.language_name.clone(), true);
+                return Ok(Some(format!(
+                    "✅ [Auto-Vertaling] Ingeschakeld voor {}! Berichten die afwijken van het \x02{} ({})\x02 worden automatisch in het kanaal vertaald.",
+                    cmd.channel, current_settings.language_name, current_settings.language_code
+                )));
+            } else if args.eq_ignore_ascii_case("off") || args.eq_ignore_ascii_case("uit") || args.eq_ignore_ascii_case("0") {
+                if !cmd.is_operator && !cmd.is_owner {
+                    return Ok(Some("⚠️ Alleen operators en de bot owner kunnen auto-vertaling in- of uitschakelen.".into()));
+                }
+
+                sqlx::query(
+                    r#"
+                    INSERT INTO channel_settings (channel, language, auto_translate)
+                    VALUES (?, ?, 0)
+                    ON CONFLICT(channel) DO UPDATE SET auto_translate = 0, updated_at = CURRENT_TIMESTAMP
+                    "#
+                )
+                .bind(&cmd.channel)
+                .bind(&current_settings.language_code)
+                .execute(&ctx.db)
+                .await?;
+
+                self.update_channel_settings(&cmd.channel, current_settings.language_code.clone(), current_settings.language_name.clone(), false);
+                return Ok(Some(format!("🛑 [Auto-Vertaling] Uitgeschakeld voor {}.", cmd.channel)));
+            } else {
+                let status = if current_settings.auto_translate { "AAN (actief) ✅" } else { "UIT 🛑" };
+                return Ok(Some(format!(
+                    "ℹ️ [Auto-Vertaling] Status voor {}: {} (Standaardtaal: \x02{} ({})\x02). Gebruik: !autotr on | !autotr off",
+                    cmd.channel, status, current_settings.language_name, current_settings.language_code
+                )));
+            }
+        }
+
+        // 3. Reguliere handmatige vertaling: !tr / !translate / !vertaal
         let is_dutch = ctx.locale.is_dutch();
         let default_target = ctx.locale.language();
 
@@ -209,7 +397,6 @@ impl Plugin for TranslatePlugin {
 
             if let Ok(reply) = ctx.ai_client.ask("Translator", &prompt, Some(&current_model)).await {
                 let clean = reply.trim().trim_matches('"').trim().to_string();
-                // Weiger antwoorden die leeg zijn óf een letterlijke echo zijn van de bronsleutel
                 if !clean.is_empty() && (!clean.eq_ignore_ascii_case(text_to_translate) || to_name == from_name) {
                     ctx.ai_manager.record_consumption(60);
                     let target_header = if is_auto_bilingual { "AUTO" } else { &to_code };
@@ -257,5 +444,82 @@ impl Plugin for TranslatePlugin {
         }
 
         Ok(Some("🌐 Geen vertaling kunnen vinden voor deze invoer.".into()))
+    }
+
+    async fn on_message(
+        &self,
+        ctx: &PluginContext,
+        msg: &MessageEvent,
+    ) -> Result<Option<String>, Box<dyn std::error::Error + Send + Sync>> {
+        let trimmed = msg.content.trim();
+
+        // 1. Negeer commando's of berichten van de bot zelf
+        if ctx.config.general.is_command_trigger(trimmed)
+            || msg.author.eq_ignore_ascii_case("IRCord")
+            || msg.author.eq_ignore_ascii_case("Monkeybot")
+        {
+            return Ok(None);
+        }
+
+        // 2. Filter ruis: minimale lengte (minstens 3 woorden en 15 tekens) en geen URLs
+        if trimmed.len() < 15
+            || trimmed.split_whitespace().count() < 3
+            || trimmed.contains("http://")
+            || trimmed.contains("https://")
+        {
+            return Ok(None);
+        }
+
+        // 3. Controleer of auto-vertaling actief is voor dit kanaal
+        let settings = self.get_channel_settings(ctx, &msg.platform, &msg.channel).await;
+        if !settings.auto_translate {
+            return Ok(None);
+        }
+
+        // 4. Cooldown per kanaal (6 seconden) om AI-overbelasting bij snelle chat te voorkomen
+        if !self.check_and_set_cooldown(&msg.channel, 6) {
+            return Ok(None);
+        }
+
+        // 5. Beoordeel met lokale Ollama AI of het bericht afwijkt van de kanaaltaal
+        let current_model = ctx.ai_manager.get_model();
+        if !ctx.ai_manager.can_consume(50) {
+            return Ok(None);
+        }
+
+        let prompt = format!(
+            "You are an automated real-time chat translator for an IRC/Discord channel where the primary chat language is {} ({}).\n\nEvaluate this message:\n1. If the message is already written in {} (including slang, informal chat, dialect), OR if it is code/technical commands, reply ONLY with 'NONE'.\n2. If the message is written in ANOTHER language (e.g. English, German, French, Spanish, etc.), translate it into {}. Output ONLY in this exact format:\n[ORIG_LANG_CODE] <translated text in {}>\n\nDo not include quotes or notes.\n\nMessage: \"{}\"",
+            settings.language_name, settings.language_code, settings.language_name, settings.language_name, settings.language_name, trimmed
+        );
+
+        let ask_fut = ctx.ai_client.ask("AutoTranslator", &prompt, Some(&current_model));
+        if let Ok(Ok(ai_reply)) = tokio::time::timeout(Duration::from_millis(2500), ask_fut).await {
+            let clean = ai_reply.trim().trim_matches('"').trim();
+
+            if clean.is_empty() || clean.starts_with("NONE") || clean.eq_ignore_ascii_case("NONE") {
+                return Ok(None);
+            }
+
+            // Verwacht formaat: "[EN] Vertaling hier" of "[DE] Vertaling hier"
+            if clean.starts_with('[') && clean.contains(']') {
+                if let Some(close_bracket) = clean.find(']') {
+                    let orig_lang = clean[1..close_bracket].trim().to_uppercase();
+                    let translation = clean[close_bracket + 1..].trim();
+
+                    if !translation.is_empty()
+                        && orig_lang != settings.language_code.to_uppercase()
+                        && !translation.eq_ignore_ascii_case(trimmed)
+                    {
+                        ctx.ai_manager.record_consumption(40);
+                        return Ok(Some(format!(
+                            "🌐 [{} ➔ {}] \x02{}\x02: {}",
+                            orig_lang, settings.language_code, msg.author, translation
+                        )));
+                    }
+                }
+            }
+        }
+
+        Ok(None)
     }
 }

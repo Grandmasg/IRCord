@@ -133,7 +133,9 @@ Alle commando's werken standaard met zowel een uitroepteken (`!`) als een punt (
 | | `!roast <nick>` | Genereert een gevatte, speelse en humoristische nerd-roast in IRC-stijl. | `!roast Botje` |
 | | `!whatis <begrip>` | Vlijmscherpe, nuchtere definitie van 1 regel voor een technisch begrip of term. | `!whatis BGP`, `!whatis Docker` |
 | | `!topic suggest` | Laat AI een creatief nieuw kanaaltopic voorstellen. | `!topic suggest` |
-| **Vertalen** | `!tr`, `!translate`, `!vertaal` | Vertaalt zinnen naar het Nederlands of een opgegeven doeltaal via lokale AI / MyMemory. | `!tr How is the weather?`, `!tr en:de Hallo` |
+| **Vertalen** | `!tr`, `!translate`, `!vertaal` | Vertaalt zinnen naar het Nederlands of een opgegeven doeltaal via lokale AI / MyMemory. | `!tr How is the weather?`, `!tr de Hallo` |
+| | `!chatlang` | Toon of wijzig de standaard chattaal van het actieve kanaal (`!chatlang nl`, `!chatlang en`, `!chatlang de`). | `!chatlang`, `!chatlang nl` |
+| | `!autotr` | Schakel realtime automatische chatvertaling in of uit voor het kanaal (`!autotr on`, `!autotr off`, `!autotr status`). Berichten die afwijken van de standaardtaal worden automatisch vertaald! | `!autotr on`, `!autotr off` |
 | **Taalvoorkeur** | `!taal`, `!lang`, `!setlang` | Persoonlijke taalvoorkeur instellen of bekijken (`!lang nl`, `!lang en`, `!lang de`, `!lang reset`). Alle botantwoorden en AI-prompts passen zich direct voor jou aan. | `!taal nl`, `!lang en`, `!taal` |
 | **Presence** | `!seen`, `!lastonline` | Toont wanneer een gebruiker voor het laatst actief was en wat diens laatste actie was. | `!seen Klaas` |
 | | `!online` | Toont een overzicht van actieve gebruikers op IRC en Discord. | `!online` |
