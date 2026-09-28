@@ -144,7 +144,11 @@ Alle commando's werken standaard met zowel een uitroepteken (`!`) als een punt (
 | **Presence** | `!seen`, `!lastonline` | Toont wanneer een gebruiker voor het laatst actief was en wat diens laatste actie was. | `!seen Klaas` |
 | | `!online` | Toont een overzicht van actieve gebruikers op IRC en Discord. | `!online` |
 | **AFK** | `!afk` | Schakelt AFK status in. Geeft automatisch antwoord wanneer iemand je noemt. | `!afk Even koffie halen` |
-| **Weer** | `!weer`, `!weather` | Haalt live weersinformatie en temperatuur op via Open-Meteo. | `!weer Amsterdam` |
+| **Weer** | `!weer`, `!weather` | Uitgebreid actueel weerbericht: conditie (emoji), temperatuur (gevoel, min/max), luchtvochtigheid, neerslag (+ % regenkans), windstreek (Beaufort), luchtdruk en zonsopgang/ondergang (Open-Meteo). | `!weer Amsterdam`, `!weer quota` |
+| **Feestdagen** | `!kerst`, `!kerts`, `!xmas` | Aftellen naar Kerstmis (25 dec) en Kerstavond (24 dec) met feestelijke wensen! | `!kerst`, `!kerts` |
+| | `!sint`, `!sinterklaas` | Aftellen naar Pakjesavond (5 dec). | `!sint` |
+| | `!nieuwjaar`, `!oudennieuw` | Aftellen naar de jaarwisseling en Oud & Nieuw! | `!nieuwjaar`, `!oudennieuw` |
+| | `!countdown`, `!aftellen` | Overzicht van feestdagen óf aftellen naar een specifieke datum (`!countdown dd-mm`). | `!countdown`, `!countdown 15-10` |
 | **Slap** | `!slap`, `!mep` | De klassieke IRC forel-slap in moderne stijl. | `!slap Botje` |
 | **Quotes** | `!quote`, `!q` | Bewaar en herinner legendarische kanaalquotes. | `!quote add <tekst>`, `!quote random` |
 | **Karma** | `!karma`, `++`, `--` | Houd karma-scores bij voor onderwerpen en nicks. | `rust++`, `bugs--`, `!karma rust` |

@@ -36,7 +36,7 @@ use plugins::{
     url_titler::UrlTitlerPlugin, weather::WeatherPlugin, whatpulse::WhatPulsePlugin,
     wiki::WikipediaPlugin, youtube::YouTubePlugin, birthday::BirthdayPlugin,
     identity::IdentityPlugin, sysadmin::SysadminPlugin, rss::RssPlugin, tech::TechPlugin,
-    rhai::RhaiPlugin, lang::LangPlugin, rephrase::RephrasePlugin,
+    rhai::RhaiPlugin, lang::LangPlugin, rephrase::RephrasePlugin, countdown::CountdownPlugin,
     MessageEvent, PluginContext, PluginManager,
 };
 use utils::error_log::ErrorLogger;
@@ -195,6 +195,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     plugin_mgr.register(Box::new(TechPlugin));
     plugin_mgr.register(Box::new(RhaiPlugin::new()));
     plugin_mgr.register(Box::new(RephrasePlugin::new()));
+    plugin_mgr.register(Box::new(CountdownPlugin::new()));
 
     info!("Plugin Manager geïnitialiseerd met {} actieve plugins", plugin_mgr.plugin_count());
     let plugin_mgr = Arc::new(plugin_mgr);
