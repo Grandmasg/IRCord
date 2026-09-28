@@ -493,7 +493,7 @@ impl Plugin for TranslatePlugin {
         );
 
         let ask_fut = ctx.ai_client.ask("AutoTranslator", &prompt, Some(&current_model));
-        if let Ok(Ok(ai_reply)) = tokio::time::timeout(Duration::from_millis(2500), ask_fut).await {
+        if let Ok(Ok(ai_reply)) = tokio::time::timeout(Duration::from_secs(8), ask_fut).await {
             let clean = ai_reply.trim().trim_matches('"').trim();
 
             if clean.is_empty() || clean.starts_with("NONE") || clean.eq_ignore_ascii_case("NONE") {
