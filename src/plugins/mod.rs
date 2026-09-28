@@ -77,6 +77,7 @@ pub struct MessageEvent {
     pub platform: String,
     pub channel: String,
     pub author: String,
+    pub author_id: Option<String>,
     pub content: String,
 }
 
@@ -131,7 +132,10 @@ impl PluginManager {
             let canonical_trigger = self.ctx.locale.resolve_alias(&raw_trigger).to_string();
             let args = parts.next().unwrap_or("").to_string();
 
-            let is_owner = msg.author.eq_ignore_ascii_case(&self.ctx.config.general.bot_owner_irc_nick);
+            let is_owner = msg.author.eq_ignore_ascii_case(&self.ctx.config.general.bot_owner_irc_nick)
+                || (msg.platform == "discord"
+                    && self.ctx.config.general.bot_owner_discord_id != 0
+                    && msg.author_id.as_deref() == Some(&self.ctx.config.general.bot_owner_discord_id.to_string()));
 
             let cmd = CommandEvent {
                 platform: msg.platform.clone(),

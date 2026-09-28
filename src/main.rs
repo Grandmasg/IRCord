@@ -315,6 +315,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                         platform: platform_str.to_string(),
                         channel: msg.source_channel.clone(),
                         author: msg.author_name.clone(),
+                        author_id: msg.author_id.clone(),
                         content: msg.content.clone(),
                     }).await;
 
