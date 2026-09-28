@@ -44,7 +44,7 @@ impl Plugin for ReactionsPlugin {
     }
 
     fn help(&self) -> &'static str {
-        "Reageert passief op gemeenschapsbegroetingen en trefwoorden (goedemorgen, welterusten, etc.)"
+        "Reageert passief op gemeenschapsbegroetingen, juichen (\\o/, WOEI!), zwaaien en emoticons"
     }
 
     async fn on_message(
@@ -121,6 +121,87 @@ impl Plugin for ReactionsPlugin {
                     format!("Hello \x02{}\x02! 👋 How are you doing?", msg.author)
                 };
                 return Ok(Some(reply));
+            }
+        }
+
+        // 5. Juichen / Blijdschap (\o/, woei, hoera, yay, etc.)
+        let is_cheer = trimmed.contains("\\o/")
+            || trimmed.contains("\\O/")
+            || trimmed.contains("\\0/")
+            || lower.contains("woei")
+            || lower.contains("hieperdepiep")
+            || lower.contains("hoera")
+            || lower.contains("woohoo")
+            || lower == "yay"
+            || lower == "yay!"
+            || lower.contains("*juicht*")
+            || lower.contains("*feest*");
+
+        if is_cheer {
+            if self.check_and_set_cooldown(&msg.channel, "cheer", 20) {
+                // Probeer eerst AI voor een grappige, dynamische reactie
+                let current_model = ctx.ai_manager.get_model();
+                if ctx.ai_manager.can_consume(40) {
+                    let prompt = format!(
+                        "Iemand in een gezellig Nederlands IRC-kanaal ({}) juicht zojuist enthousiast met '\\o/' of 'WOEI!'. Bedenk als gevatte bot een ultrakorte, energieke, grappige reactie van maximaal 5 woorden om mee te juichen (zoals 'WOEI! \\o/', 'Biertje erbij! 🍻 \\o/', 'Hieperdepiep! 🎉', 'Jaaaa hype! \\o/'). Geef UITSLUITEND de reactie zonder aanhalingstekens of uitleg:\n{}",
+                        msg.author, msg.content
+                    );
+
+                    let ask_fut = ctx.ai_client.ask("CheerBot", &prompt, Some(&current_model));
+                    if let Ok(Ok(ai_reply)) = tokio::time::timeout(Duration::from_millis(2000), ask_fut).await {
+                        let clean = ai_reply.trim().trim_matches('"').trim();
+                        if !clean.is_empty() && clean.len() <= 60 {
+                            ctx.ai_manager.record_consumption(30);
+                            return Ok(Some(clean.to_string()));
+                        }
+                    }
+                }
+
+                // Snelle fallback lijst met klassieke IRC juich-teksten
+                let fallbacks = [
+                    "WOEI! \\o/",
+                    "\\o/ Jaaaaa! Hype!",
+                    "\\o/ 🎉 WOEI! Hieperdepiep!",
+                    "\\o/ Biertje erbij! 🍻",
+                    "\\o/ *confetti strooit* 🎉",
+                    "\\o/ Feestjeee!",
+                    "\\o/ *juicht luidkeels mee*",
+                    "(ﾉ◕ヮ◕)ﾉ*:･ﾟ✧ WOEI! \\o/",
+                ];
+                let idx = (std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis() as usize)
+                    % fallbacks.len();
+                return Ok(Some(fallbacks[idx].to_string()));
+            }
+        }
+
+        // 6. High-five / Zwaaien (o/ of \o)
+        if trimmed == "o/" || trimmed == "O/" {
+            if self.check_and_set_cooldown(&msg.channel, "wave", 25) {
+                return Ok(Some("\\o".to_string()));
+            }
+        } else if trimmed == "\\o" || trimmed == "\\O" {
+            if self.check_and_set_cooldown(&msg.channel, "wave", 25) {
+                return Ok(Some("o/".to_string()));
+            }
+        }
+
+        // 7. Table flip: (╯°□°)╯︵ ┻━┻ of ┻━┻
+        if trimmed.contains("┻━┻") {
+            if self.check_and_set_cooldown(&msg.channel, "tableflip", 30) {
+                return Ok(Some(format!(
+                    "┬─┬ノ( º _ ºノ) Rustig maar \x02{}\x02, niet met de meubels gooien!",
+                    msg.author
+                )));
+            }
+        }
+
+        // 8. Shrug: ¯\_(ツ)_/¯
+        if trimmed.contains("¯\\_(ツ)_/¯") {
+            if self.check_and_set_cooldown(&msg.channel, "shrug", 30) {
+                return Ok(Some("¯\\_(ツ)_/¯ Het is wat het is!".to_string()));
             }
         }
 
