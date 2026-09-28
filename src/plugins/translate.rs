@@ -750,62 +750,117 @@ impl Plugin for TranslatePlugin {
             return Ok(None);
         }
 
-        let system_prompt = format!(
-            "You are a conservative automated chat translator for an IRC/Discord channel where the primary chat language is {} ({}).\n\
-            IMPORTANT CONTEXT:\n\
-            - Chatters speak {}, but frequently use English IT loanwords, tech terms, and brand names (e.g., 'portainer', 'settings', 'update', 'link', 'browser', 'password', 'server', 'download', 'docker').\n\
-            RULES:\n\
-            1. If the message is written in {} (even with English technical terms or brand names), reply ONLY with: NONE\n\
-            2. Do NOT translate messages that are already in {}!\n\
-            3. ONLY translate if the message is genuinely written in a COMPLETELY DIFFERENT language (e.g. full English, German, French, Spanish) by a foreign speaker.\n\
-            Output format: [SOURCE_LANG_CODE] <translated text in {}>\n\
-            If no translation is needed, output ONLY: NONE",
-            settings.language_name, settings.language_code,
-            settings.language_name,
-            settings.language_name,
-            settings.language_name,
-            settings.language_name
-        );
+        // Bepaal de verwachte brontaal op basis van Rust heuristiek
+        let (expected_lang_code, detected_lang_hint) = if has_foreign_script {
+            ("AUTO", "non-Latin (Chinese/Japanese/Russian/etc.)")
+        } else if scores.is_likely_french() {
+            ("FR", "French")
+        } else if scores.is_likely_spanish() {
+            ("ES", "Spanish")
+        } else if scores.is_likely_german() {
+            ("DE", "German")
+        } else if scores.is_likely_english() {
+            ("EN", "English")
+        } else {
+            ("AUTO", "foreign")
+        };
+
+        // System prompt:
+        // Voor niet-Latijns schrift (Chinees, Japans, etc.) is het 100% zeker geen Nederlands; vraag direct om vertaling!
+        let system_prompt = if has_foreign_script {
+            format!(
+                "You are an automated chat translator for an IRC/Discord channel.\n\
+                The primary channel language is {} ({}).\n\
+                The input text is written in a non-Latin script.\n\
+                TASK: Detect the 2-letter language code (e.g. ZH, JA, KO, RU, AR, EL) and translate the text directly into {}.\n\
+                Output format strictly: [LANG] <translated text in {}>\n\
+                Example: [ZH] Dit is een testzin.\n\
+                Output ONLY the formatted translation, without quotes, notes, or explanations.",
+                settings.language_name, settings.language_code,
+                settings.language_name,
+                settings.language_name
+            )
+        } else {
+            format!(
+                "You are an automated chat translator for an IRC/Discord channel where the primary chat language is {} ({}).\n\
+                RULES:\n\
+                1. If the message is already written in {}, reply ONLY: NONE\n\
+                2. If the message is written in a foreign language (such as {}), translate it into {}.\n\
+                Output format strictly: [LANG] <translated text in {}>\n\
+                Example: [FR] Dit is een testzin.\n\
+                If the text is already in {}, output ONLY: NONE",
+                settings.language_name, settings.language_code,
+                settings.language_name,
+                detected_lang_hint, settings.language_name,
+                settings.language_name,
+                settings.language_name
+            )
+        };
 
         let user_prompt = format!("Message: \"{}\"", trimmed);
 
         let ask_fut = ctx.ai_client.ask_with_system(&system_prompt, "AutoTranslator", &user_prompt, Some(&current_model));
+        let mut final_result: Option<(String, String)> = None;
+
         if let Ok(Ok(ai_reply)) = tokio::time::timeout(Duration::from_secs(8), ask_fut).await {
             let clean = ai_reply.trim().trim_matches('"').trim();
             tracing::info!("🌐 [Auto-Translate Evaluatie] Kanaal '{}': input='{}' ➔ AI='{}'", msg.channel, trimmed, clean);
 
-            if clean.is_empty()
-                || clean.starts_with("NONE")
-                || clean.eq_ignore_ascii_case("NONE")
-                || clean.ends_with("NONE")
-            {
-                return Ok(None);
-            }
-
-            // Haal eventuele taal-tag [XX] op
-            let (orig_lang, translation) = if let (Some(open), Some(close)) = (clean.find('['), clean.find(']')) {
+            // Parse resultaat: [XX] vertaling OF XX: vertaling OF XX vertaling
+            let parsed = if let (Some(open), Some(close)) = (clean.find('['), clean.find(']')) {
                 if close > open && close - open <= 10 {
                     let tag = clean[open + 1..close].trim().to_uppercase();
                     let rest = clean[close + 1..].trim().trim_start_matches(':').trim();
-                    (tag, rest.to_string())
+                    Some((tag, rest.to_string()))
                 } else {
-                    ("?".to_string(), clean.to_string())
+                    None
+                }
+            } else if let Some((first, rest)) = clean.split_once([':', ' ']) {
+                let first_clean = first.trim().to_uppercase();
+                if (first_clean.len() == 2 || first_clean.len() == 3) && first_clean.chars().all(|c| c.is_ascii_alphabetic()) && first_clean != "NONE" {
+                    Some((first_clean, rest.trim().to_string()))
+                } else {
+                    None
                 }
             } else {
-                ("?".to_string(), clean.to_string())
+                None
             };
 
-            // Als de bron-taal dezelfde is als de doeltaal, nooit outputten
-            if orig_lang.eq_ignore_ascii_case(&settings.language_code) {
-                return Ok(None);
+            if let Some((tag, trans)) = parsed {
+                // Als de vertaling niet leeg is en niet "NONE", en tag is niet de kanaaltaal:
+                if !trans.is_empty()
+                    && !trans.eq_ignore_ascii_case("NONE")
+                    && !tag.eq_ignore_ascii_case(&settings.language_code)
+                    && !trans.eq_ignore_ascii_case(trimmed)
+                {
+                    final_result = Some((tag, trans));
+                }
             }
+        }
 
-            // Als het resultaat identiek is aan het origineel, niet vertalen
-            if translation.is_empty() || translation.eq_ignore_ascii_case(trimmed) {
-                return Ok(None);
+        // Fallback: als de classificatie-evaluatie "NONE" of "FR NONE" opleverde, maar Rust WEET dat het een buitenlands bericht is:
+        if final_result.is_none() && (has_foreign_script || scores.is_foreign_to_dutch()) {
+            tracing::info!("🌐 [Auto-Translate Fallback] Rust detecteerde vreemde taal ({}), directe vertaling aanvragen...", detected_lang_hint);
+            let direct_prompt = format!(
+                "You are a professional translator. Translate the following text directly into {} (from {}). Output ONLY the direct translated text in {}, without quotes, explanations, or notes:\n\n{}",
+                settings.language_name, detected_lang_hint, settings.language_name, trimmed
+            );
+            if let Ok(Ok(reply)) = tokio::time::timeout(Duration::from_secs(8), ctx.ai_client.ask("Translator", &direct_prompt, Some(&current_model))).await {
+                let clean = reply.trim().trim_matches('"').trim();
+                if !clean.is_empty() && !clean.eq_ignore_ascii_case("NONE") && !clean.eq_ignore_ascii_case(trimmed) {
+                    let tag = if expected_lang_code != "AUTO" {
+                        expected_lang_code.to_string()
+                    } else if has_foreign_script {
+                        "ZH/JA".to_string()
+                    } else {
+                        "?".to_string()
+                    };
+                    final_result = Some((tag, clean.to_string()));
+                }
             }
+        }
 
-            // Bouw de taalbadge: als de AI per ongeluk de doeltaal tagde (bijv. [EN]), toon [➔ EN]
+        if let Some((orig_lang, translation)) = final_result {
             let badge = if orig_lang == "?" || orig_lang == settings.language_code.to_uppercase() {
                 format!("🌐 [➔ {}]", settings.language_code.to_uppercase())
             } else {
