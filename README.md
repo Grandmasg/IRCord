@@ -135,6 +135,10 @@ All commands accept either an exclamation mark (`!`) or a period (`.`) by defaul
 | | `!roast <nick>` | Generates a witty, playful nerd roast in classic IRC style. | `!roast Bob` |
 | | `!whatis <term>`, `!def` | Razor-sharp, factual 1-line definition for technical terms or acronyms. | `!whatis BGP`, `!whatis Docker` |
 | | `!topic suggest` | AI generates a creative, relevant channel topic suggestion. | `!topic suggest` |
+| | `!rephrase`, `!klaartaal` | Rewrites complex, jargon-heavy, or convoluted sentences into simple, clear B1 language. Without args, targets the last message! | `!rephrase`, `!rephrase Bob`, `!rephrase This proposition lacks...` |
+| | `!eli5` | Explains a complex statement or sentence like I'm 5 years old (using analogies/metaphors). | `!eli5`, `!eli5 Quantum computing` |
+| | `!zakelijk`, `!corporate` | Converts blunt, casual, or frustrated chat messages into polished, professional, diplomatic phrasing. | `!zakelijk Hurry up with this` |
+| | `!beknopt`, `!kort` | Strips all fluff and summarizes the essential core takeaway into 1 punchy sentence. | `!beknopt`, `!kort Long explanation...` |
 | **Translate** | `!translate`, `!tr`, `!vertaal` | Translates text using local AI (with seamless fallback to web translation). | `!tr de Good morning!`, `!tr en:nl Hello` |
 | | `!chatlang` | Inspect or update the channel's default primary language (`!chatlang nl`, `!chatlang en`). | `!chatlang`, `!chatlang nl` |
 | | `!autotr` | Enable or disable real-time autonomous channel chat translation (`!autotr on`, `!autotr off`, `!autotr status`). Non-standard languages are automatically translated! | `!autotr on`, `!autotr off` |

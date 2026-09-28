@@ -30,6 +30,7 @@ pub mod rss;
 pub mod tech;
 pub mod rhai;
 pub mod lang;
+pub mod rephrase;
 
 use async_trait::async_trait;
 use reqwest::Client;
