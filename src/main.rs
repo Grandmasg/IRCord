@@ -134,6 +134,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let rag_searcher = Arc::new(RagSearcher::new(pool.clone()));
     let vision_helper = Arc::new(VisionHelper::new());
 
+    // Asynchrone AI model pre-warm bij het opstarten zodat het direct klaarstaat in GPU VRAM
+    let warm_client = free_token_client.clone();
+    let warm_model = ai_model.clone();
+    tokio::spawn(async move {
+        tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+        info!("🔥 AI Model pre-warm gestart: inladen van model '{}' in GPU VRAM...", warm_model);
+        match warm_client.ask("Warmup", "Hallo", Some(&warm_model)).await {
+            Ok(_) => info!("✅ AI Model '{}' succesvol voorverwarmd en geladen in GPU VRAM!", warm_model),
+            Err(e) => warn!("⚠️ AI Model pre-warm niet gelukt (laadt alsnog bij eerste vraag): {}", e),
+        }
+    });
+
     // 6. Bouw Plugin Context en registreer alle plugins
     let cfg_arc = Arc::new(cfg.clone());
     let error_logger = Arc::new(ErrorLogger::new(100));
