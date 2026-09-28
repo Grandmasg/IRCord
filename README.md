@@ -141,7 +141,7 @@ All commands accept either an exclamation mark (`!`) or a period (`.`) by defaul
 | | `!beknopt`, `!kort` | Strips all fluff and summarizes the essential core takeaway into 1 punchy sentence. | `!beknopt`, `!kort Long explanation...` |
 | **Translate** | `!translate`, `!tr`, `!vertaal` | Translates text using local AI (with seamless fallback to web translation). | `!tr de Good morning!`, `!tr en:nl Hello` |
 | | `!chatlang` | Inspect or update the channel's default primary language (`!chatlang nl`, `!chatlang en`). | `!chatlang`, `!chatlang nl` |
-| | `!autotr` | Enable or disable real-time autonomous channel chat translation (`!autotr on`, `!autotr off`, `!autotr status`). Non-standard languages are automatically translated! | `!autotr on`, `!autotr off` |
+| | `!autotr` | Enable or disable real-time autonomous channel chat translation (`!autotr on`, `!autotr off`, `!autotr status`). Non-standard languages are automatically translated! *(Idea by ®Cjefke 2026)* | `!autotr on`, `!autotr off` |
 | **Language** | `!lang`, `!taal`, `!setlang` | Set or inspect your personal language preference (`!lang nl`, `!lang en`, `!lang de`, `!lang reset`). Responses & AI prompts automatically adapt. | `!lang nl`, `!lang en`, `!lang` |
 | **Weather** | `!weather`, `!weer`, `!wetter`| Current weather, temperature, and wind speed via Open-Meteo. | `!weather Amsterdam`, `!weather Tokyo` |
 | **Time** | `!time`, `!tijd`, `!clock`, `!klok` | Real-time world clock and timezone information for any city or country. | `!time Tokyo`, `!time New York` |
@@ -329,6 +329,12 @@ IRCord/
 For a comprehensive guide covering Discord Developer Portal setup, SASL account configuration, bare-metal installation, and systemd services, refer to:
 
 👉 **[INSTALL.md](INSTALL.md)** *(Dutch version: [INSTALL.nl.md](INSTALL.nl.md))*
+
+---
+
+## 💡 Credits & Special Thanks
+
+* **Real-time Autonomous Chat Translation (`!autotr`)**: Conceived and proposed by **®Cjefke 2026**!
 
 ---
 
