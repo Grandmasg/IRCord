@@ -144,7 +144,7 @@ Alle commando's werken standaard met zowel een uitroepteken (`!`) als een punt (
 | | `!catchup [aantal]` | Persoonlijke samenvatting van recente chatberichten bij terugkeer (afspraken, pings, highlights). | `!catchup`, `!catchup 50` |
 | | `!vibe`, `!sentiment` | Peilt in 1-2 zinnen de sfeer en heetste gespreksonderwerpen in het kanaal. | `!vibe` |
 | | `!roast <nick>` | Genereert een gevatte, speelse en humoristische nerd-roast in IRC-stijl. | `!roast Botje` |
-| | `!rant [onderwerp]`, `!tirade` | Theatrale, hilarische en vlammende nerd-rant/tirade over elk onderwerp (of recente chatdiscussie). | `!rant printers`, `!rant` |
+| | `!rant [onderwerp\|nick]`, `!tirade` | Theatrale, hilarische en vlammende nerd-rant/tirade over elk onderwerp, recente chatdiscussie óf kanaalgebruiker. | `!rant Botje`, `!rant printers`, `!rant` |
 | | `!whatis <begrip>` | Vlijmscherpe, nuchtere definitie van 1 regel voor een technisch begrip of term. | `!whatis BGP`, `!whatis Docker` |
 | | `!topic suggest` | Laat AI een creatief nieuw kanaaltopic voorstellen. | `!topic suggest` |
 | | `!rephrase`, `!klaartaal` | Herschrijft moeilijke, wollige of ambtelijke zinnen in glashelder Nederlands (B1). Zonder argument pakt hij het laatste bericht! | `!rephrase`, `!rephrase Klaas`, `!rephrase De propositie...` |

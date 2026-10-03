@@ -42,7 +42,7 @@ impl Plugin for AiPlugin {
     fn name(&self) -> &'static str { "ai" }
     fn triggers(&self) -> &[&'static str] { &["ai", "tldr", "summary", "topic", "roast", "rant", "tirade", "whatis", "def", "catchup", "digest", "vibe", "sentiment"] }
     fn help(&self) -> &'static str {
-        "!ai <question> | !catchup [count] | !vibe | !tldr [url] | !topic | !roast <nick> | !rant [topic] | !whatis <term>"
+        "!ai <question> | !catchup [count] | !vibe | !tldr [url] | !topic | !roast <nick> | !rant [topic|nick] | !whatis <term>"
     }
 
     async fn on_command(&self, ctx: &PluginContext, cmd: &CommandEvent) -> Result<Option<String>, Box<dyn std::error::Error + Send + Sync>> {
@@ -257,7 +257,42 @@ impl Plugin for AiPlugin {
                     return Ok(Some(format!("⚠️ {}", ctx.locale.t("ai_budget_exceeded"))));
                 }
 
-                let prompt = if !args.is_empty() {
+                let nick_messages: Vec<String> = if !args.is_empty() && !args.contains(' ') {
+                    let rows: Result<Vec<(String,)>, sqlx::Error> = sqlx::query_as(
+                        r#"
+                        SELECT message
+                        FROM chat_history
+                        WHERE channel = ? AND LOWER(author) = LOWER(?)
+                        ORDER BY rowid DESC
+                        LIMIT 5
+                        "#,
+                    )
+                    .bind(&cmd.channel)
+                    .bind(args)
+                    .fetch_all(&ctx.db)
+                    .await;
+                    rows.unwrap_or_default().into_iter().map(|(m,)| m).collect()
+                } else {
+                    Vec::new()
+                };
+
+                let prompt = if !nick_messages.is_empty() {
+                    let quotes = nick_messages.join(" | ");
+                    match ctx.locale.language() {
+                        "nl" => format!(
+                            "Houd een hilarische, theatraal geëxaspereerde nerd-rant/tirade over de gebruiker/chatter '{}' in klassieke humoristische IRC-stijl. Recente uitspraken van deze chatter ter inspiratie: \"{}\". Maximaal 1 à 2 zinnen, vol overdreven speelse frustratie en gevatheid, geen haatzaaien of grove scheldwoorden, pure hilarische venting.",
+                            args, quotes
+                        ),
+                        "de" => format!(
+                            "Halte einen urkomischen, theatralisch genervten Nerd-Rant über den Chat-Benutzer '{}' im klassischen humorvollen IRC-Stil. Aktuelle Zitate dieses Nutzers als Inspiration: \"{}\". Maximal 1-2 Sätze, voller übertriebener Frustration und Witz, kein Hass.",
+                            args, quotes
+                        ),
+                        _ => format!(
+                            "Deliver a hilarious, theatrically exasperated nerd rant about the chat user '{}' in classic humorous IRC style. Recent quotes from this chatter for inspiration: \"{}\". Maximum 1-2 sentences, packed with over-the-top frustration and wit, no hate speech or slurs.",
+                            args, quotes
+                        ),
+                    }
+                } else if !args.is_empty() {
                     match ctx.locale.language() {
                         "nl" => format!(
                             "Houd een hilarische, theatraal geëxaspereerde en vlammende nerd-rant/tirade over '{}' in klassieke humoristische IRC-stijl. Maximaal 1 à 2 zinnen, vol overdreven frustratie en gevatheid, geen haatzaaien of grove scheldwoorden, pure hilarische venting.",
