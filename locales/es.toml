@@ -16,13 +16,35 @@ lang_title = "Idioma"
 
 [language_detection]
 distinct_words = [
-    "el", "la", "los", "las", "un", "una", "unos", "unas", "de", "del", "al", "en", "que", "por",
-    "para", "con", "sin", "sobre", "entre", "hasta", "desde", "pero", "sino", "aunque", "como",
+    # Artículos y determinantes
+    "el", "la", "los", "las", "un", "una", "unos", "unas", "de", "del", "al",
     "este", "esta", "estos", "estas", "ese", "esa", "esos", "esas", "aquel", "aquella", "esto", "eso",
-    "todo", "todos", "toda", "todas", "muy", "mucho", "más", "menos", "bien", "mal", "hola",
-    "gracias", "amigo", "amigos", "donde", "cuando", "porque", "bueno", "buenos", "buenas", "también",
-    "nosotros", "ustedes", "ellos", "ellas", "favor", "hacer", "hace", "puede", "pueden", "ser",
-    "es", "son", "era", "fueron", "estar", "está", "están", "tiene", "tienen", "haber", "hay"
+    "mi", "mis", "tu", "tus", "su", "sus", "nuestro", "nuestra", "nuestros", "nuestras",
+    # Pronombres
+    "yo", "tú", "tu", "él", "el", "ella", "ellos", "ellas", "nosotros", "nosotras", "usted", "ustedes",
+    "me", "te", "se", "nos", "le", "les", "mí", "ti", "conmigo", "contigo",
+    "que", "quien", "quienes", "donde", "cuando", "como", "porque",
+    # Verbos comunes
+    "ser", "es", "son", "era", "eran", "fui", "fue", "fueron", "sido",
+    "estar", "estoy", "estás", "estas", "está", "esta", "estamos", "están", "estan", "estuvo",
+    "haber", "hay", "había", "habia", "he", "has", "ha", "hemos", "han",
+    "tener", "tengo", "tienes", "tiene", "tenemos", "tienen", "tenía", "tenia",
+    "hacer", "hago", "haces", "hace", "hacemos", "hacen", "hecho",
+    "ir", "voy", "vas", "va", "vamos", "van", "fui", "fue",
+    "poder", "puedo", "puedes", "puede", "podemos", "pueden",
+    "decir", "digo", "dices", "dice", "decimos", "dicen", "dicho",
+    "saber", "sé", "se", "sabes", "sabe", "sabemos", "saben",
+    "querer", "quiero", "quieres", "quiere", "queremos", "quieren",
+    # Preposiciones y conjunciones
+    "en", "por", "para", "con", "sin", "sobre", "entre", "hasta", "desde", "hacia",
+    "pero", "sino", "aunque", "porque", "como", "si",
+    # Negación y cantidad
+    "no", "nada", "nunca", "jamás", "jamas", "nadie", "ningún", "ningun", "ninguna",
+    "todo", "todos", "toda", "todas", "muy", "mucho", "mucha", "muchos", "muchas", "más", "mas", "menos", "poco", "bien", "mal",
+    # Tiempo y adverbios
+    "también", "tambien", "tampoco", "siempre", "ahora", "después", "despues", "antes", "aquí", "aqui", "allí", "alli", "ya", "todavía", "todavia",
+    # Palabras comunes y saludos
+    "hola", "gracias", "amigo", "amigos", "bueno", "buenos", "buenas", "favor", "tiempo", "día", "dia", "noche", "gente", "cosa", "cosas", "verdad", "claro"
 ]
 casual_banter = [
     "si", "no", "hola", "adios", "gracias", "porfa", "jaja", "jajaja"

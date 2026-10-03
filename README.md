@@ -156,7 +156,7 @@ All commands accept either an exclamation mark (`!`) or a period (`.`) by defaul
 | | `!chatlang` | Inspect or update the channel's default primary language (`!chatlang nl`, `!chatlang en`). | `!chatlang`, `!chatlang nl` |
 | | `!autotr` | Enable or disable real-time autonomous channel chat translation (`!autotr on`, `!autotr off`, `!autotr status`). Non-standard languages are automatically translated! *(Idea by ®Cjefke 2026)* | `!autotr on`, `!autotr off` |
 | **Language** | `!lang`, `!taal`, `!setlang` | Set or inspect your personal language preference (`!lang nl`, `!lang en`, `!lang de`, `!lang reset`). Responses & AI prompts automatically adapt. | `!lang nl`, `!lang en`, `!lang` |
-| **Weather** | `!weather`, `!weer`, `!wetter`| Comprehensive weather report: condition (emoji), temperature (apparent, min/max), humidity, precipitation (+ % rain chance), wind direction & Beaufort, pressure, and sunrise/sunset (Open-Meteo). | `!weather Amsterdam`, `!weather quota` |
+| **Weather** | `!weather`, `!weer`, `!wetter`| Comprehensive weather report: condition (emoji), temperature (apparent, min/max), humidity, precipitation (+ % rain chance), wind direction & Beaufort, pressure, and sunrise/sunset (Open-Meteo). Supports default location per user via `!weather set <city>` and clearing via `!weather unset`. | `!weather Amsterdam`, `!weather set Amsterdam`, `!weather`, `!weather quota` |
 | **Festive** | `!kerst`, `!kerts`, `!xmas` | Countdown to Christmas Day (Dec 25) & Christmas Eve (Dec 24) with seasonal greetings! | `!kerst`, `!xmas` |
 | | `!sint`, `!sinterklaas` | Countdown to Sinterklaas Pakjesavond (Dec 5). | `!sint` |
 | | `!nieuwjaar`, `!newyear` | Countdown to New Year's Eve & New Year's Day! | `!nieuwjaar`, `!newyear` |

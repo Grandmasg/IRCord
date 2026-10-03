@@ -132,22 +132,117 @@ fn extract_time_hhmm(iso_str: &str) -> &str {
     }
 }
 
+async fn get_user_location(
+    ctx: &PluginContext,
+    platform: &str,
+    author: &str,
+) -> Result<Option<String>, Box<dyn std::error::Error + Send + Sync>> {
+    // 1. Directe lookup op author en platform (of platform='any')
+    let row: Option<(String,)> = sqlx::query_as(
+        "SELECT location FROM user_weather_locations WHERE LOWER(user_id) = LOWER(?) AND (platform = ? OR platform = 'any') LIMIT 1"
+    )
+    .bind(author)
+    .bind(platform)
+    .fetch_optional(&ctx.db)
+    .await?;
+
+    if let Some(r) = row {
+        return Ok(Some(r.0));
+    }
+
+    // 2. Probeer gekoppeld account (IRC <=> Discord account_links)
+    let linked: Option<(String, String)> = sqlx::query_as(
+        "SELECT irc_nick, discord_tag FROM account_links WHERE LOWER(irc_nick) = LOWER(?) OR LOWER(discord_tag) = LOWER(?) LIMIT 1"
+    )
+    .bind(author)
+    .bind(author)
+    .fetch_optional(&ctx.db)
+    .await
+    .unwrap_or(None);
+
+    if let Some((irc_nick, discord_tag)) = linked {
+        let other_id = if author.eq_ignore_ascii_case(&irc_nick) {
+            discord_tag
+        } else {
+            irc_nick
+        };
+        let row_linked: Option<(String,)> = sqlx::query_as(
+            "SELECT location FROM user_weather_locations WHERE LOWER(user_id) = LOWER(?) LIMIT 1"
+        )
+        .bind(other_id)
+        .fetch_optional(&ctx.db)
+        .await
+        .unwrap_or(None);
+
+        if let Some(r) = row_linked {
+            return Ok(Some(r.0));
+        }
+    }
+
+    Ok(None)
+}
+
+async fn set_user_location(
+    ctx: &PluginContext,
+    platform: &str,
+    author: &str,
+    location: &str,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let _ = sqlx::query(
+        "CREATE TABLE IF NOT EXISTS user_weather_locations (
+            platform TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            location TEXT NOT NULL,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (platform, user_id)
+        )"
+    )
+    .execute(&ctx.db)
+    .await;
+
+    sqlx::query(
+        "INSERT INTO user_weather_locations (platform, user_id, location, updated_at)
+         VALUES (?, LOWER(?), ?, CURRENT_TIMESTAMP)
+         ON CONFLICT(platform, user_id) DO UPDATE SET location = excluded.location, updated_at = CURRENT_TIMESTAMP"
+    )
+    .bind(platform)
+    .bind(author)
+    .bind(location)
+    .execute(&ctx.db)
+    .await?;
+
+    Ok(())
+}
+
+async fn unset_user_location(
+    ctx: &PluginContext,
+    platform: &str,
+    author: &str,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    sqlx::query(
+        "DELETE FROM user_weather_locations WHERE LOWER(user_id) = LOWER(?) AND (platform = ? OR platform = 'any')"
+    )
+    .bind(author)
+    .bind(platform)
+    .execute(&ctx.db)
+    .await?;
+
+    Ok(())
+}
+
 #[async_trait]
 impl Plugin for WeatherPlugin {
     fn name(&self) -> &'static str { "weather" }
     fn triggers(&self) -> &[&'static str] { &["weather", "weer", "wetter"] }
-    fn help(&self) -> &'static str { "!weather <city> / !weer <plaatsnaam> - Uitgebreid actueel weerbericht inclusief gevoelstemperatuur, neerslag, windstoten en zon" }
+    fn help(&self) -> &'static str { "!weather [<city> | set <city> | unset] / !weer [<plaatsnaam> | set <plaatsnaam> | unset] - Actueel weerbericht (of stel je vaste locatie in met 'set')" }
 
     async fn on_command(&self, ctx: &PluginContext, cmd: &CommandEvent) -> Result<Option<String>, Box<dyn std::error::Error + Send + Sync>> {
-        let city = cmd.args.trim();
+        let trimmed_args = cmd.args.trim();
         let lang = ctx.locale.language();
         let is_dutch = ctx.locale.is_dutch();
 
-        if city.is_empty() {
-            return Ok(Some(ctx.locale.t("weather_usage").into()));
-        }
-
-        if city.eq_ignore_ascii_case("quota") || city.eq_ignore_ascii_case("status") {
+        // 1. Quota status opvragen
+        if trimmed_args.eq_ignore_ascii_case("quota") || trimmed_args.eq_ignore_ascii_case("status") {
             let q = ctx.open_meteo_quota.get_status();
             let label = format!(
                 "📊 [{}] {}: {}/{} | {}: {}/{} | {}: {}/{} calls",
@@ -159,7 +254,101 @@ impl Plugin for WeatherPlugin {
             return Ok(Some(label));
         }
 
-        let cache_key = format!("{}:{}:{}", cmd.platform, lang, city.to_lowercase());
+        // 2. Vaste weerlocatie wissen (!weer unset / clear / reset)
+        if trimmed_args.eq_ignore_ascii_case("unset")
+            || trimmed_args.eq_ignore_ascii_case("clear")
+            || trimmed_args.eq_ignore_ascii_case("reset")
+            || trimmed_args.eq_ignore_ascii_case("verwijder")
+            || trimmed_args.eq_ignore_ascii_case("delete")
+        {
+            unset_user_location(ctx, &cmd.platform, &cmd.author).await?;
+            return Ok(Some(ctx.locale.tf("weather_unset_success", &[("author", &cmd.author)])));
+        }
+
+        // 3. Vaste weerlocatie instellen (!weer set <plaatsnaam>)
+        if trimmed_args.eq_ignore_ascii_case("set")
+            || trimmed_args.eq_ignore_ascii_case("opslaan")
+            || trimmed_args.eq_ignore_ascii_case("default")
+        {
+            return Ok(Some(ctx.locale.t("weather_set_usage").into()));
+        }
+
+        if let Some(target_loc) = trimmed_args.strip_prefix("set ")
+            .or_else(|| trimmed_args.strip_prefix("Set "))
+            .or_else(|| trimmed_args.strip_prefix("opslaan "))
+            .or_else(|| trimmed_args.strip_prefix("Opslaan "))
+            .or_else(|| trimmed_args.strip_prefix("default "))
+            .or_else(|| trimmed_args.strip_prefix("Default "))
+        {
+            let target_loc = target_loc.trim();
+            if target_loc.is_empty() {
+                return Ok(Some(ctx.locale.t("weather_set_usage").into()));
+            }
+
+            // Valideer via geocoding of de locatie bestaat en haal mooie naam op
+            let api_key = std::env::var("OPEN_METEO_API_KEY").ok().filter(|k| !k.trim().is_empty());
+            let geo_host = if api_key.is_some() {
+                "customer-geocoding-api.open-meteo.com"
+            } else {
+                "geocoding-api.open-meteo.com"
+            };
+
+            let mut req = ctx.http
+                .get(format!("https://{}/v1/search", geo_host))
+                .query(&[("name", target_loc), ("count", "1")]);
+            if let Some(ref k) = api_key {
+                req = req.query(&[("apikey", k.as_str())]);
+            }
+
+            let canonical_name = match req.header("User-Agent", "IRCordBot/1.0 (weather client)").send().await {
+                Ok(resp) if resp.status().is_success() => {
+                    if let Ok(geo) = resp.json::<GeoResult>().await {
+                        if let Some(locs) = geo.results {
+                            if let Some(first) = locs.first() {
+                                let country = first.country.as_deref().unwrap_or("");
+                                if country.is_empty() {
+                                    first.name.clone()
+                                } else {
+                                    format!("{}, {}", first.name, country)
+                                }
+                            } else {
+                                return Ok(Some(ctx.locale.tf("weather_not_found", &[("city", target_loc)])));
+                            }
+                        } else {
+                            return Ok(Some(ctx.locale.tf("weather_not_found", &[("city", target_loc)])));
+                        }
+                    } else {
+                        target_loc.to_string()
+                    }
+                }
+                _ => target_loc.to_string(),
+            };
+
+            set_user_location(ctx, &cmd.platform, &cmd.author, &canonical_name).await?;
+            return Ok(Some(ctx.locale.tf(
+                "weather_set_success",
+                &[("author", &cmd.author), ("city", &canonical_name)],
+            )));
+        }
+
+        // 4. Bepaal doelstad (ingevoerd of opgeslagen vaste locatie van de gebruiker)
+        let (city, is_default_for_user) = if trimmed_args.is_empty() {
+            if let Some(saved) = get_user_location(ctx, &cmd.platform, &cmd.author).await? {
+                (saved, true)
+            } else {
+                return Ok(Some(ctx.locale.t("weather_usage").into()));
+            }
+        } else {
+            (trimmed_args.to_string(), false)
+        };
+
+        let cache_key = format!(
+            "{}:{}:{}:{}",
+            cmd.platform,
+            lang,
+            city.to_lowercase(),
+            if is_default_for_user { &cmd.author } else { "" }
+        );
         {
             if let Ok(guard) = self.cache.lock() {
                 if let Some((cached_text, timestamp)) = guard.get(&cache_key) {
@@ -307,21 +496,27 @@ impl Plugin for WeatherPlugin {
                     _ => String::new(),
                 };
 
+                let default_badge = if is_default_for_user {
+                    format!(" • {}", ctx.locale.tf("weather_default_badge", &[("author", &cmd.author)]))
+                } else {
+                    String::new()
+                };
+
                 let output = if cmd.platform == "discord" {
                     format!(
-                        "🌦️ **[{} {} ({})]** {} **{}**\n\
+                        "🌦️ **[{} {} ({}){}]** {} **{}**\n\
                         🌡️ **Temperatuur:** {:.1}°C (Gevoel {:.1}°C{}) | 💧 **Luchtvochtigheid:** {}%\n\
                         🌧️ **Neerslag:** {:.1} mm{} | 💨 **Wind:** {:.1} km/h {} ({} Bft)\n\
                         🧭 **Luchtdruk:** {:.0} hPa{}",
-                        title, loc.name, country, w_emoji, w_desc,
+                        title, loc.name, country, default_badge, w_emoji, w_desc,
                         temp, feels_like, min_max_str, humidity,
                         precip, rain_prob_str, wind_speed, wind_compass, bft,
                         pressure, sun_str.replace(" | Zon:", "🌅 **Zon:**")
                     )
                 } else {
                     format!(
-                        "🌦️ [{} {} ({})] {} {} | Temp: {:.1}°C (gevoel {:.1}°C{}) | Vocht: {}% | Regen: {:.1} mm{} | Wind: {:.1} km/h {} ({} Bft) | Druk: {:.0} hPa{}",
-                        title, loc.name, country, w_emoji, w_desc,
+                        "🌦️ [{} {} ({}){}] {} {} | Temp: {:.1}°C (gevoel {:.1}°C{}) | Vocht: {}% | Regen: {:.1} mm{} | Wind: {:.1} km/h {} ({} Bft) | Druk: {:.0} hPa{}",
+                        title, loc.name, country, default_badge, w_emoji, w_desc,
                         temp, feels_like, min_max_str, humidity,
                         precip, rain_prob_str, wind_speed, wind_compass, bft,
                         pressure, sun_str
@@ -336,7 +531,7 @@ impl Plugin for WeatherPlugin {
             }
         }
 
-        let not_found = ctx.locale.tf("weather_not_found", &[("city", city)]);
+        let not_found = ctx.locale.tf("weather_not_found", &[("city", &city)]);
         Ok(Some(not_found))
     }
 }
@@ -381,5 +576,69 @@ mod tests {
     fn test_extract_time_hhmm() {
         assert_eq!(extract_time_hhmm("2026-09-28T07:36"), "07:36");
         assert_eq!(extract_time_hhmm("19:24"), "19:24");
+    }
+
+    #[tokio::test]
+    async fn test_user_weather_location_persistence() {
+        let pool = sqlx::SqlitePool::connect("sqlite::memory:").await.unwrap();
+
+        let _ = sqlx::query(
+            "CREATE TABLE IF NOT EXISTS user_weather_locations (
+                platform TEXT NOT NULL,
+                user_id TEXT NOT NULL,
+                location TEXT NOT NULL,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (platform, user_id)
+            )"
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        // 1. Invoegen
+        sqlx::query(
+            "INSERT INTO user_weather_locations (platform, user_id, location, updated_at)
+             VALUES (?, LOWER(?), ?, CURRENT_TIMESTAMP)
+             ON CONFLICT(platform, user_id) DO UPDATE SET location = excluded.location, updated_at = CURRENT_TIMESTAMP"
+        )
+        .bind("irc")
+        .bind("Grandmasg")
+        .bind("Amsterdam, Netherlands")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        // 2. Opvragen (case-insensitief)
+        let row: Option<(String,)> = sqlx::query_as(
+            "SELECT location FROM user_weather_locations WHERE LOWER(user_id) = LOWER(?) AND (platform = ? OR platform = 'any') LIMIT 1"
+        )
+        .bind("grandmasg")
+        .bind("irc")
+        .fetch_optional(&pool)
+        .await
+        .unwrap();
+
+        assert_eq!(row.map(|r| r.0), Some("Amsterdam, Netherlands".to_string()));
+
+        // 3. Verwijderen
+        sqlx::query(
+            "DELETE FROM user_weather_locations WHERE LOWER(user_id) = LOWER(?) AND (platform = ? OR platform = 'any')"
+        )
+        .bind("Grandmasg")
+        .bind("irc")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        let row_after: Option<(String,)> = sqlx::query_as(
+            "SELECT location FROM user_weather_locations WHERE LOWER(user_id) = LOWER(?) AND (platform = ? OR platform = 'any') LIMIT 1"
+        )
+        .bind("grandmasg")
+        .bind("irc")
+        .fetch_optional(&pool)
+        .await
+        .unwrap();
+
+        assert_eq!(row_after, None);
     }
 }

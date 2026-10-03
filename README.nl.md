@@ -157,7 +157,7 @@ Alle commando's werken standaard met zowel een uitroepteken (`!`) als een punt (
 | **Presence** | `!seen`, `!lastonline` | Toont wanneer een gebruiker voor het laatst actief was en wat diens laatste actie was. | `!seen Klaas` |
 | | `!online` | Toont een overzicht van actieve gebruikers op IRC en Discord. | `!online` |
 | **AFK** | `!afk` | Schakelt AFK status in. Geeft automatisch antwoord wanneer iemand je noemt. | `!afk Even koffie halen` |
-| **Weer** | `!weer`, `!weather` | Uitgebreid actueel weerbericht: conditie (emoji), temperatuur (gevoel, min/max), luchtvochtigheid, neerslag (+ % regenkans), windstreek (Beaufort), luchtdruk en zonsopgang/ondergang (Open-Meteo). | `!weer Amsterdam`, `!weer quota` |
+| **Weer** | `!weer`, `!weather` | Uitgebreid actueel weerbericht: conditie (emoji), temperatuur (gevoel, min/max), luchtvochtigheid, neerslag (+ % regenkans), windstreek (Beaufort), luchtdruk en zonsopgang/ondergang (Open-Meteo). Ondersteunt een vaste locatie per gebruiker via `!weer set <plaats>` en wissen via `!weer unset`. | `!weer Amsterdam`, `!weer set Amsterdam`, `!weer`, `!weer quota` |
 | **Feestdagen** | `!kerst`, `!kerts`, `!xmas` | Aftellen naar Kerstmis (25 dec) en Kerstavond (24 dec) met feestelijke wensen! | `!kerst`, `!kerts` |
 | | `!sint`, `!sinterklaas` | Aftellen naar Pakjesavond (5 dec). | `!sint` |
 | | `!nieuwjaar`, `!oudennieuw` | Aftellen naar de jaarwisseling en Oud & Nieuw! | `!nieuwjaar`, `!oudennieuw` |

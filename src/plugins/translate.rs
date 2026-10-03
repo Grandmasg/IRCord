@@ -204,21 +204,21 @@ impl LanguageScore {
     }
 
     pub fn is_likely_german(&self) -> bool {
-        self.german_count >= 2
+        (self.german_count >= 2 || (self.total_words <= 4 && self.german_count >= 1 && self.dutch_count == 0))
             && self.german_count > self.dutch_count
-            && (self.german_pct >= 20.0 || (self.total_words <= 5 && self.german_count >= 2))
+            && (self.german_pct >= 20.0 || (self.total_words <= 5 && self.german_count >= 1))
     }
 
     pub fn is_likely_french(&self) -> bool {
-        self.french_count >= 2
+        (self.french_count >= 2 || (self.total_words <= 4 && self.french_count >= 1 && self.dutch_count == 0))
             && self.french_count > self.dutch_count
-            && (self.french_pct >= 20.0 || (self.total_words <= 5 && self.french_count >= 2))
+            && (self.french_pct >= 20.0 || (self.total_words <= 5 && self.french_count >= 1))
     }
 
     pub fn is_likely_spanish(&self) -> bool {
-        self.spanish_count >= 2
+        (self.spanish_count >= 2 || (self.total_words <= 4 && self.spanish_count >= 1 && self.dutch_count == 0))
             && self.spanish_count > self.dutch_count
-            && (self.spanish_pct >= 20.0 || (self.total_words <= 5 && self.spanish_count >= 2))
+            && (self.spanish_pct >= 20.0 || (self.total_words <= 5 && self.spanish_count >= 1))
     }
 
     /// Geeft aan of de tekst overtuigend een andere taal is dan Nederlands
@@ -296,12 +296,16 @@ pub fn calculate_language_percentages_with_locale(text: &str, locale: Option<&Lo
         "les", "des", "une", "est", "sont", "que", "qui", "dans", "pour", "pas", "sur", "cette", "avec",
         "tout", "tous", "nous", "vous", "ils", "elles", "mais", "notre", "votre", "leur", "comme",
         "aussi", "bonjour", "merci", "salut", "comment", "pourquoi", "quand", "toujours", "mon", "ma",
+        "mes", "ton", "ta", "tes", "son", "sa", "ses", "moi", "toi", "lui", "eux", "rien", "jamais",
+        "fais", "fait", "fai", "vais", "vas", "va", "suis", "veux", "peux", "sais", "bien", "très", "tres",
+        "ça", "ca", "oui", "non", "bon", "bonne",
     ];
 
     const DISTINCT_SPANISH: &[&str] = &[
         "los", "las", "una", "unos", "unas", "por", "para", "con", "son", "como", "pero", "este", "esta",
         "estos", "estas", "todo", "todos", "toda", "todas", "muy", "hola", "gracias", "amigo", "amigos",
         "donde", "quando", "porque", "bueno", "buenos", "buenas", "también", "nosotros", "ustedes", "favor",
+        "nada", "nunca", "siempre", "ahora", "quiero", "tengo", "hacer", "hace", "estoy", "está", "estan",
     ];
 
     let fr_custom = loc.get_distinct_words("fr");
@@ -713,9 +717,9 @@ impl Plugin for TranslatePlugin {
                 return Ok(None);
             }
 
-            // B. Bericht moet overtuigend een buitenlandse taal zijn (EN, DE, FR, ES of ander schrift)
-            // Korte berichten (< 6 woorden) die geen duidelijke vreemde taalkenmerken hebben negeren we
-            if !scores.is_foreign_to_dutch() && !has_foreign_script && scores.total_words < 6 {
+            // B. Bericht moet overtuigend een buitenlandse taal zijn als er al Nederlandse woorden in voorkomen.
+            // Als er 0 Nederlandse woorden in staan (dutch_count == 0), laten we de AI de taal bepalen (zoals Frans, Italiaans, etc.)!
+            if !scores.is_foreign_to_dutch() && !has_foreign_script && scores.dutch_count > 0 && scores.total_words < 6 {
                 return Ok(None);
             }
         } else if settings.language_code.eq_ignore_ascii_case("EN") {
@@ -724,8 +728,7 @@ impl Plugin for TranslatePlugin {
                 return Ok(None);
             }
 
-            // Bericht moet overtuigend een buitenlandse taal zijn (NL, DE, FR, ES of ander schrift)
-            if !scores.is_foreign_to_english() && !has_foreign_script && scores.total_words < 6 {
+            if !scores.is_foreign_to_english() && !has_foreign_script && scores.english_count > 0 && scores.total_words < 6 {
                 return Ok(None);
             }
         } else if settings.language_code.eq_ignore_ascii_case("DE") {
@@ -734,7 +737,7 @@ impl Plugin for TranslatePlugin {
                 return Ok(None);
             }
 
-            if !scores.is_likely_dutch() && !scores.is_likely_english() && !scores.is_likely_french() && !has_foreign_script && scores.total_words < 6 {
+            if !scores.is_likely_dutch() && !scores.is_likely_english() && !scores.is_likely_french() && !has_foreign_script && scores.german_count > 0 && scores.total_words < 6 {
                 return Ok(None);
             }
         }
@@ -976,6 +979,23 @@ mod tests {
         assert!(fr_score2.is_likely_french());
         assert!(fr_score2.is_foreign_to_dutch());
         assert!(!fr_score2.is_likely_dutch());
+
+        // Informele/gesproken Franse chatzinnen (zoals getest door Cjefke)
+        let fr_score3 = calculate_language_percentages_with_locale(
+            "sa fai rien pour moi",
+            Some(&locale),
+        );
+        assert!(fr_score3.is_likely_french());
+        assert!(fr_score3.is_foreign_to_dutch());
+        assert!(!fr_score3.is_likely_dutch());
+
+        let fr_score4 = calculate_language_percentages_with_locale(
+            "tu est trés bon!",
+            Some(&locale),
+        );
+        assert!(fr_score4.is_likely_french());
+        assert!(fr_score4.is_foreign_to_dutch());
+        assert!(!fr_score4.is_likely_dutch());
     }
 }
 

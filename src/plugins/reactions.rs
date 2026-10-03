@@ -54,64 +54,58 @@ impl Plugin for ReactionsPlugin {
     ) -> Result<Option<String>, Box<dyn std::error::Error + Send + Sync>> {
         // Ignore bot's own messages or commands
         let trimmed = msg.content.trim();
-        if ctx.config.general.is_command_trigger(trimmed) || msg.author.eq_ignore_ascii_case("IRCord") {
+        let bot_nick = std::env::var("IRC_NICK").unwrap_or_else(|_| "IRCordBot".to_string());
+        if ctx.config.general.is_command_trigger(trimmed)
+            || msg.author.eq_ignore_ascii_case("IRCord")
+            || msg.author.eq_ignore_ascii_case(&bot_nick)
+        {
             return Ok(None);
         }
 
-        let lower = trimmed.to_lowercase();
         let is_dutch = ctx.config.general.language == "nl";
 
-        // 1. Goedemorgen / Ochtendbegroeting
-        if lower.starts_with("goedemorgen")
-            || lower.starts_with("goeiemorgen")
-            || lower.starts_with("mogguh")
-            || lower.starts_with("mogge")
-            || lower == "gm"
-        {
-            if self.check_and_set_cooldown(&msg.channel, "morning", 300) {
-                let reply = if is_dutch {
-                    format!("Goedemorgen \x02{}\x02! ☕ Fijne dag gewenst!", msg.author)
-                } else {
-                    format!("Good morning \x02{}\x02! ☕ Have a great day!", msg.author)
-                };
-                return Ok(Some(reply));
+        // 1. Begroetingen (Ochtend, Avond, Nacht)
+        // Checkt of het gericht is aan iedereen / de bot, of specifiek aan een andere nick (zoals "Mogge Huub!")
+        if let Some(category) = detect_greeting(trimmed, &bot_nick) {
+            match category {
+                GreetingCategory::Morning => {
+                    if self.check_and_set_cooldown(&msg.channel, "morning", 300) {
+                        let reply = if is_dutch {
+                            format!("Goedemorgen \x02{}\x02! ☕ Fijne dag gewenst!", msg.author)
+                        } else {
+                            format!("Good morning \x02{}\x02! ☕ Have a great day!", msg.author)
+                        };
+                        return Ok(Some(reply));
+                    }
+                }
+                GreetingCategory::Evening => {
+                    if self.check_and_set_cooldown(&msg.channel, "evening", 300) {
+                        let reply = if is_dutch {
+                            format!("Goedenavond \x02{}\x02! 🌆 Gezellige avond gewenst.", msg.author)
+                        } else {
+                            format!("Good evening \x02{}\x02! 🌆 Have a pleasant evening.", msg.author)
+                        };
+                        return Ok(Some(reply));
+                    }
+                }
+                GreetingCategory::Night => {
+                    if self.check_and_set_cooldown(&msg.channel, "night", 300) {
+                        let reply = if is_dutch {
+                            format!("Welterusten \x02{}\x02! 🌙 Slaap lekker.", msg.author)
+                        } else {
+                            format!("Good night \x02{}\x02! 🌙 Sleep well.", msg.author)
+                        };
+                        return Ok(Some(reply));
+                    }
+                }
             }
         }
 
-        // 2. Goedenavond / Avondbegroeting
-        if lower.starts_with("goedenavond")
-            || lower.starts_with("goeonavond")
-            || lower.starts_with("fijne avond")
-        {
-            if self.check_and_set_cooldown(&msg.channel, "evening", 300) {
-                let reply = if is_dutch {
-                    format!("Goedenavond \x02{}\x02! 🌆 Gezellige avond gewenst.", msg.author)
-                } else {
-                    format!("Good evening \x02{}\x02! 🌆 Have a pleasant evening.", msg.author)
-                };
-                return Ok(Some(reply));
-            }
-        }
+        let lower = trimmed.to_lowercase();
 
-        // 3. Welterusten / Nacht
-        if lower.starts_with("welterusten")
-            || lower.starts_with("slaap lekker")
-            || lower.starts_with("trusten")
-            || lower == "gn"
-        {
-            if self.check_and_set_cooldown(&msg.channel, "night", 300) {
-                let reply = if is_dutch {
-                    format!("Welterusten \x02{}\x02! 🌙 Slaap lekker.", msg.author)
-                } else {
-                    format!("Good night \x02{}\x02! 🌙 Sleep well.", msg.author)
-                };
-                return Ok(Some(reply));
-            }
-        }
-
-        // 4. Directe begroeting aan de bot (bijv. "hallo bot", "hoi ircord", "hey botje")
-        let bot_name = ctx.config.general.bot_owner_irc_nick.to_lowercase();
-        if (lower.contains("bot") || lower.contains("ircord") || (!bot_name.is_empty() && lower.contains(&bot_name)))
+        // 4. Directe begroeting aan de bot (bijv. "hallo bot", "hoi ircord", "hey monkeybot")
+        let bot_clean = bot_nick.to_lowercase();
+        if (lower.contains("bot") || lower.contains("ircord") || (!bot_clean.is_empty() && lower.contains(&bot_clean)))
             && (lower.starts_with("hallo") || lower.starts_with("hoi") || lower.starts_with("hey") || lower.starts_with("hi "))
         {
             if self.check_and_set_cooldown(&msg.channel, "hello", 120) {
@@ -209,6 +203,162 @@ impl Plugin for ReactionsPlugin {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum GreetingCategory {
+    Morning,
+    Evening,
+    Night,
+}
+
+/// Detecteert begroetingen (ochtend, avond, nacht).
+///
+/// Geeft `None` terug wanneer de begroeting specifiek gericht is aan een andere nickname
+/// (bijv. "Mogge Huub!" of "Goedemorgen Peter").
+///
+/// Geeft `Some(category)` terug wanneer het gericht is aan iedereen ("Mogge allemaal", "Mogge!"),
+/// of specifiek aan de bot zelf ("Mogge Monkeybot", "Mogge botje").
+pub(crate) fn detect_greeting(text: &str, bot_nick: &str) -> Option<GreetingCategory> {
+    let lower = text.trim().to_lowercase();
+    if lower.is_empty() {
+        return None;
+    }
+
+    const MORNING_PREFIXES: &[&str] = &[
+        "goedemorgen",
+        "goeiemorgen",
+        "goede morgen",
+        "goeie morgen",
+        "good morning",
+        "mogguh",
+        "mogge",
+        "mornin",
+        "morning",
+        "gm",
+    ];
+
+    const EVENING_PREFIXES: &[&str] = &[
+        "goedenavond",
+        "goeonavond",
+        "goede avond",
+        "goeie avond",
+        "good evening",
+        "fijne avond",
+    ];
+
+    const NIGHT_PREFIXES: &[&str] = &[
+        "welterusten",
+        "slaap lekker",
+        "slaapwel",
+        "trusten",
+        "good night",
+        "gn",
+    ];
+
+    let check_list = |prefixes: &[&'static str], cat: GreetingCategory| -> Option<(GreetingCategory, &str)> {
+        for &prefix in prefixes {
+            if lower.starts_with(prefix) {
+                let rest = &lower[prefix.len()..];
+                // Word boundary check: volgend karakter mag geen alfanumeriek teken zijn
+                if let Some(ch) = rest.chars().next() {
+                    if ch.is_alphanumeric() {
+                        continue;
+                    }
+                }
+                return Some((cat, rest));
+            }
+        }
+        None
+    };
+
+    let (category, remainder) = check_list(MORNING_PREFIXES, GreetingCategory::Morning)
+        .or_else(|| check_list(EVENING_PREFIXES, GreetingCategory::Evening))
+        .or_else(|| check_list(NIGHT_PREFIXES, GreetingCategory::Night))?;
+
+    let trimmed_rest = remainder.trim();
+    if trimmed_rest.is_empty() {
+        // Alleen de begroeting (bijv. "mogge", "goedemorgen")
+        return Some(category);
+    }
+
+    // Strip voorloop-leestekens (zoals ", huub!" -> "huub!", "@huub" -> "huub")
+    let trimmed_tokens = trimmed_rest.trim_start_matches(|c: char| c.is_ascii_punctuation() || c.is_whitespace());
+    if trimmed_tokens.is_empty() {
+        // Enkel leestekens/emojis (bijv. "mogge!", "mogge...", "mogge : )")
+        return Some(category);
+    }
+
+    // Zoek het eerste woord dat alfanumerieke karakters bevat (sla emojis/smileys zoals ":-)" of "☕" over)
+    let mut target = None;
+    for word in trimmed_tokens.split_whitespace() {
+        let clean = word
+            .trim_matches(|c: char| !c.is_alphanumeric())
+            .to_lowercase();
+        if !clean.is_empty() {
+            target = Some(clean);
+            break;
+        }
+    }
+
+    let target_nick = match target {
+        Some(t) => t,
+        None => {
+            // Geen alfanumerieke naam gevonden (enkel emojis/smileys) -> algemene kanaalbegroeting
+            return Some(category);
+        }
+    };
+
+    // 1. Is de begroeting gericht aan de bot zelf?
+    let bot_clean = bot_nick.trim().to_lowercase();
+    if target_nick == "bot"
+        || target_nick == "botje"
+        || target_nick == "ircord"
+        || (!bot_clean.is_empty() && target_nick == bot_clean)
+    {
+        return Some(category);
+    }
+
+    // 2. Is de begroeting gericht aan het gehele kanaal / iedereen?
+    const COLLECTIVE_TARGETS: &[&str] = &[
+        "allemaal",
+        "allen",
+        "all",
+        "iedereen",
+        "everyone",
+        "everybody",
+        "folks",
+        "guys",
+        "peeps",
+        "peepz",
+        "mensen",
+        "lui",
+        "lieden",
+        "luisteraars",
+        "kanaal",
+        "channel",
+        "chan",
+        "chat",
+        "room",
+        "wereld",
+        "world",
+        "samen",
+        "tezamen",
+        "tesamen",
+        "dames",
+        "heren",
+        "vrienden",
+        "kanjers",
+        "toppers",
+    ];
+
+    if COLLECTIVE_TARGETS.contains(&target_nick.as_str()) {
+        return Some(category);
+    }
+
+    // 3. De begroeting is gericht aan een specifieke andere persoon/nick (bijv. "Huub", "Peter")
+    // In dat geval: zeg niks ("zeg maar niks")!
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -222,5 +372,61 @@ mod tests {
         // Different category or channel should succeed
         assert!(plugin.check_and_set_cooldown("#test", "evening", 60));
         assert!(plugin.check_and_set_cooldown("#other", "morning", 60));
+    }
+
+    #[test]
+    fn test_greeting_other_nick_ignored() {
+        let bot_nick = "Monkeybot";
+
+        // Gerichte begroeting aan een andere nick: bot moet ZWIJGEN
+        assert_eq!(detect_greeting("Mogge Huub!", bot_nick), None);
+        assert_eq!(detect_greeting("Mogge Huub", bot_nick), None);
+        assert_eq!(detect_greeting("mogge @Huub", bot_nick), None);
+        assert_eq!(detect_greeting("Mogge, Huub!", bot_nick), None);
+        assert_eq!(detect_greeting("Mogge: Huub", bot_nick), None);
+        assert_eq!(detect_greeting("Mogge :) Huub", bot_nick), None);
+        assert_eq!(detect_greeting("Goedemorgen Peter", bot_nick), None);
+        assert_eq!(detect_greeting("Goeiemorgen Anita!", bot_nick), None);
+        assert_eq!(detect_greeting("Goedenavond Huub!", bot_nick), None);
+        assert_eq!(detect_greeting("Welterusten Huub", bot_nick), None);
+        assert_eq!(detect_greeting("Trusten Huub!", bot_nick), None);
+        assert_eq!(detect_greeting("Slaap lekker Huub", bot_nick), None);
+        assert_eq!(detect_greeting("GM Huub", bot_nick), None);
+    }
+
+    #[test]
+    fn test_greeting_general_and_bot_acknowledged() {
+        let bot_nick = "Monkeybot";
+
+        // Algemene begroetingen (zonder specifieke nick) -> bot mag reageren
+        assert_eq!(detect_greeting("Mogge", bot_nick), Some(GreetingCategory::Morning));
+        assert_eq!(detect_greeting("Mogge!", bot_nick), Some(GreetingCategory::Morning));
+        assert_eq!(detect_greeting("Mogguh!", bot_nick), Some(GreetingCategory::Morning));
+        assert_eq!(detect_greeting("Goedemorgen", bot_nick), Some(GreetingCategory::Morning));
+        assert_eq!(detect_greeting("Goeiemorgen!", bot_nick), Some(GreetingCategory::Morning));
+        assert_eq!(detect_greeting("Mogge :)", bot_nick), Some(GreetingCategory::Morning));
+        assert_eq!(detect_greeting("Mogge ☕", bot_nick), Some(GreetingCategory::Morning));
+        assert_eq!(detect_greeting("GM", bot_nick), Some(GreetingCategory::Morning));
+
+        // Collectieve kanaalbegroetingen -> bot mag reageren
+        assert_eq!(detect_greeting("Mogge allemaal!", bot_nick), Some(GreetingCategory::Morning));
+        assert_eq!(detect_greeting("Mogge allen", bot_nick), Some(GreetingCategory::Morning));
+        assert_eq!(detect_greeting("Mogge iedereen", bot_nick), Some(GreetingCategory::Morning));
+        assert_eq!(detect_greeting("GM all", bot_nick), Some(GreetingCategory::Morning));
+        assert_eq!(detect_greeting("Goedenavond allemaal", bot_nick), Some(GreetingCategory::Evening));
+        assert_eq!(detect_greeting("Goedenavond!", bot_nick), Some(GreetingCategory::Evening));
+        assert_eq!(detect_greeting("Welterusten iedereen", bot_nick), Some(GreetingCategory::Night));
+        assert_eq!(detect_greeting("Welterusten", bot_nick), Some(GreetingCategory::Night));
+        assert_eq!(detect_greeting("Slaap lekker!", bot_nick), Some(GreetingCategory::Night));
+
+        // Direct aan de bot gericht -> bot mag reageren
+        assert_eq!(detect_greeting("Mogge Monkeybot!", bot_nick), Some(GreetingCategory::Morning));
+        assert_eq!(detect_greeting("Mogge bot", bot_nick), Some(GreetingCategory::Morning));
+        assert_eq!(detect_greeting("Mogge botje", bot_nick), Some(GreetingCategory::Morning));
+        assert_eq!(detect_greeting("Goedemorgen ircord", bot_nick), Some(GreetingCategory::Morning));
+
+        // Woorden die toevallig beginnen met begroetingstekst
+        assert_eq!(detect_greeting("mogged", bot_nick), None);
+        assert_eq!(detect_greeting("gmail", bot_nick), None);
     }
 }

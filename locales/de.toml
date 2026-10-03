@@ -27,7 +27,11 @@ lang = ["sprache", "lang", "language", "taal"]
 weather_title = "Wetter"
 weather_temp = "Temperatur"
 weather_wind = "Wind"
-weather_usage = "Verwendung: !wetter <Stadt> (oder !wetter quota)"
+weather_usage = "Verwendung: !wetter <Stadt> (oder !wetter set <Stadt> / !wetter unset)"
+weather_set_usage = "Verwendung: !wetter set <Stadt>, um deinen Standardstandort festzulegen."
+weather_set_success = "Standard-Wetterstandort für {author} auf {city} festgelegt! Du kannst jetzt einfach !wetter verwenden."
+weather_unset_success = "Standard-Wetterstandort für {author} wurde entfernt."
+weather_default_badge = "Standardstandort von {author}"
 weather_not_found = "Ort '{city}' nicht gefunden."
 weather_quota_label = "Open-Meteo Quota"
 weather_minute = "Minute"
@@ -162,9 +166,34 @@ lang_reset = "🔄 [{title}] Deine Sprachpräferenz wurde auf den Server-Standar
 
 [language_detection]
 distinct_words = [
-    "der", "das", "und", "nicht", "sie", "wir", "ich", "ihr", "mein", "meine", "meinem", "meinen",
-    "meiner", "eine", "einer", "einem", "einen", "auch", "auf", "dem", "den", "sich", "aber", "wenn",
-    "können", "kann", "haben", "hat", "wird", "werden", "nach", "oder", "uns", "doch", "schon", "sehr",
-    "guten", "bitte", "danke", "kein", "keine", "immer", "jetzt", "deutsch", "deutschland", "vielleicht",
-    "welche", "dieser", "diese", "dieses", "hilfe"
+    # Artikel & Pronomen
+    "der", "die", "das", "den", "dem", "des", "ein", "eine", "einer", "einem", "einen", "eines",
+    "ich", "du", "er", "sie", "es", "wir", "ihr", "mich", "dich", "ihn", "uns", "euch", "ihnen",
+    "mein", "meine", "meinem", "meinen", "meiner", "dein", "deine", "deinem", "deinen", "deiner",
+    "sein", "seine", "seinem", "seinen", "seiner", "ihr", "ihre", "ihrem", "ihren", "ihrer", "unser", "euer",
+    "dieser", "diese", "dieses", "diesem", "diesen", "welche", "welcher", "welches", "sich",
+    # Verben
+    "ist", "sind", "war", "waren", "sein", "bin", "bist", "seid",
+    "haben", "hat", "habe", "hast", "hatte", "hatten",
+    "werden", "wird", "wurde", "wurden",
+    "können", "kann", "kannst", "konnte", "konnten",
+    "müssen", "muss", "musst", "musste", "muessen",
+    "wollen", "will", "willst", "wollte",
+    "sollen", "soll", "sollte",
+    "gehen", "geht", "ging", "gegangen",
+    "machen", "macht", "machte", "gemacht",
+    "wissen", "weiß", "weiss", "weißt", "weisst", "wusste",
+    "kommen", "kommt", "kam", "gekommen",
+    "sehen", "sieht", "sah", "gesehen",
+    "geben", "gibt", "gab", "gegeben",
+    # Konjunktionen & Präpositionen
+    "und", "oder", "aber", "wenn", "weil", "dass", "daß", "denn", "ob",
+    "auf", "mit", "von", "zu", "für", "fuer", "in", "im", "bei", "nach", "aus", "um", "über", "ueber", "vor", "unter", "zwischen",
+    # Negation & Adverbien
+    "nicht", "kein", "keine", "keinem", "keinen", "keiner", "nichts", "nie", "niemals", "niemand",
+    "auch", "noch", "schon", "sehr", "viel", "mehr", "wenig", "immer", "jetzt", "heute", "morgen", "gestern",
+    "hier", "da", "dort", "vielleicht", "doch", "mal", "wieder", "ganz", "gut", "schlecht", "wirklich",
+    # Fragen & Alltägliches
+    "warum", "wie", "wo", "wann", "wer", "was", "wohin", "woher",
+    "bitte", "danke", "guten", "hallo", "tschüss", "tschuess", "hilfe", "deutsch", "deutschland"
 ]

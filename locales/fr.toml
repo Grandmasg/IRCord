@@ -16,13 +16,38 @@ lang_title = "Langue"
 
 [language_detection]
 distinct_words = [
-    "le", "la", "les", "un", "une", "des", "du", "de", "d", "l", "ce", "cet", "cette", "ces",
-    "ceci", "cela", "est", "sont", "été", "être", "avoir", "ai", "a", "ont", "il", "ils", "elle",
-    "elles", "on", "nous", "vous", "je", "tu", "qui", "que", "quoi", "dont", "dans", "pour", "par",
-    "sur", "avec", "sans", "sous", "mais", "ou", "et", "donc", "ni", "car", "pas", "plus", "ne",
-    "en", "tout", "tous", "toute", "toutes", "faire", "fait", "comme", "aussi", "bien", "très",
-    "même", "autre", "autres", "doit", "doivent", "peut", "peuvent", "bonjour", "merci", "salut",
-    "comment", "pourquoi", "quand", "toujours", "mon", "ton", "son", "notre", "votre", "leur"
+    # Articles & Déterminants
+    "le", "la", "les", "un", "une", "des", "du", "de", "d", "l", "au", "aux",
+    "ce", "cet", "cette", "ces", "ceci", "cela", "ça", "ca", "sa", "son", "ses",
+    "mon", "ma", "mes", "ton", "ta", "tes", "notre", "nos", "votre", "vos", "leur", "leurs",
+    # Pronoms
+    "je", "tu", "il", "ils", "elle", "elles", "on", "nous", "vous", "me", "te", "se",
+    "moi", "toi", "lui", "eux", "qui", "que", "quoi", "dont", "où", "ou",
+    # Verbes courants & formes parlées
+    "est", "sont", "suis", "es", "sommes", "êtes", "etes", "été", "ete", "être", "etre",
+    "avoir", "ai", "as", "a", "avons", "avez", "ont",
+    "faire", "fais", "fait", "fai", "faisons", "faites", "font",
+    "aller", "vais", "vas", "va", "allons", "allez", "vont",
+    "dire", "dis", "dit", "disons", "dites", "disent",
+    "voir", "vois", "voit", "voyons", "voyez", "voient", "vu",
+    "savoir", "sais", "sait", "savons", "savez", "savent",
+    "pouvoir", "peux", "peut", "pouvons", "pouvez", "peuvent",
+    "vouloir", "veux", "veut", "voulons", "voulez", "veulent",
+    "devoir", "dois", "doit", "devons", "devez", "doivent",
+    "venir", "viens", "vient", "venons", "venez", "viennent",
+    "faut", "falloir",
+    # Prépositions & Conjonctions
+    "dans", "pour", "par", "sur", "avec", "sans", "sous", "chez", "vers",
+    "mais", "donc", "ni", "car", "parce", "comme", "si",
+    # Négation & Quantités
+    "ne", "pas", "plus", "rien", "jamais", "aucun", "aucune", "personne",
+    "tout", "tous", "toute", "toutes", "très", "tres", "trop", "beaucoup", "peu", "assez", "bien", "mal",
+    # Temps & Adverbes
+    "aussi", "même", "meme", "autre", "autres", "toujours", "encore", "déjà", "deja",
+    "ici", "là", "maintenant", "alors", "ensuite", "après", "apres", "avant", "vrai", "vraiment",
+    # Questions & Salutations
+    "comment", "pourquoi", "quand", "combien",
+    "bonjour", "salut", "bonsoir", "bonne", "merci", "plait", "plaît", "monde", "gens", "temps", "chose", "vie"
 ]
 casual_banter = [
     "oui", "non", "merci", "salut", "bonjour", "coucou", "stp", "svp", "mdr", "ptdr"
