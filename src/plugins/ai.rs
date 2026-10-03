@@ -40,9 +40,9 @@ impl AiPlugin {
 #[async_trait]
 impl Plugin for AiPlugin {
     fn name(&self) -> &'static str { "ai" }
-    fn triggers(&self) -> &[&'static str] { &["ai", "tldr", "summary", "topic", "roast", "whatis", "def", "catchup", "digest", "vibe", "sentiment"] }
+    fn triggers(&self) -> &[&'static str] { &["ai", "tldr", "summary", "topic", "roast", "rant", "tirade", "whatis", "def", "catchup", "digest", "vibe", "sentiment"] }
     fn help(&self) -> &'static str {
-        "!ai <question> | !catchup [count] | !vibe | !tldr [url] | !topic | !roast <nick> | !whatis <term>"
+        "!ai <question> | !catchup [count] | !vibe | !tldr [url] | !topic | !roast <nick> | !rant [topic] | !whatis <term>"
     }
 
     async fn on_command(&self, ctx: &PluginContext, cmd: &CommandEvent) -> Result<Option<String>, Box<dyn std::error::Error + Send + Sync>> {
@@ -252,6 +252,59 @@ impl Plugin for AiPlugin {
                 Ok(Some(format!("🔥 [{}]: {}", ctx.locale.t("ai_roast_title"), roast.replace('\n', " "))))
             }
 
+            "rant" | "tirade" => {
+                if !ctx.ai_manager.can_consume(150) {
+                    return Ok(Some(format!("⚠️ {}", ctx.locale.t("ai_budget_exceeded"))));
+                }
+
+                let prompt = if !args.is_empty() {
+                    match ctx.locale.language() {
+                        "nl" => format!(
+                            "Houd een hilarische, theatraal geëxaspereerde en vlammende nerd-rant/tirade over '{}' in klassieke humoristische IRC-stijl. Maximaal 1 à 2 zinnen, vol overdreven frustratie en gevatheid, geen haatzaaien of grove scheldwoorden, pure hilarische venting.",
+                            args
+                        ),
+                        "de" => format!(
+                            "Halte einen urkomischen, theatralisch genervten und feurigen Nerd-Rant über '{}' im klassischen humorvollen IRC-Stil. Maximal 1-2 Sätze, voller übertriebener Frustration und Witz, kein Hass, reines amüsantes Auskotzen.",
+                            args
+                        ),
+                        _ => format!(
+                            "Deliver a hilarious, theatrically exasperated, and fiery nerd rant about '{}' in classic humorous IRC style. Maximum 1-2 sentences, packed with over-the-top frustration and wit, no hate speech or slurs, purely hilarious venting.",
+                            args
+                        ),
+                    }
+                } else {
+                    let recent_logs = ctx.rag.search_history(&cmd.channel, 8).await.unwrap_or_default();
+                    let context_text = recent_logs.join("\n");
+                    if !context_text.trim().is_empty() {
+                        match ctx.locale.language() {
+                            "nl" => format!(
+                                "Houd op basis van deze recente chat een hilarische, theatraal geëxaspereerde nerd-rant/tirade over waar het gesprek zojuist over ging (maximaal 1 à 2 zinnen, vol overdreven frustratie en gevatheid, geen haatzaaien of grove scheldwoorden):\n{}",
+                                context_text
+                            ),
+                            "de" => format!(
+                                "Halte basierend auf diesem aktuellen Chat einen urkomischen, theatralisch genervten Nerd-Rant über das aktuelle Chatthema (maximal 1-2 Sätze, voller übertriebener Frustration und Witz, kein Hass):\n{}",
+                                context_text
+                            ),
+                            _ => format!(
+                                "Based on this recent chat, deliver a hilarious, theatrically exasperated nerd rant about what was just discussed (maximum 1-2 sentences, packed with over-the-top frustration and wit, no hate speech or slurs):\n{}",
+                                context_text
+                            ),
+                        }
+                    } else {
+                        match ctx.locale.language() {
+                            "nl" => "Houd een hilarische, theatraal geëxaspereerde nerd-rant/tirade over een klassieke tech- of kantoorergernis (zoals printers, DNS, JavaScript, oneindige meetings of Wi-Fi storingen) in klassieke humoristische IRC-stijl (maximaal 1 à 2 zinnen, vol overdreven frustratie en gevatheid, geen haatzaaien).".to_string(),
+                            "de" => "Halte einen urkomischen, theatralisch genervten Nerd-Rant über ein klassisches Tech- oder Büro-Ärgernis (wie Drucker, DNS, JavaScript oder endlose Meetings) im humorvollen IRC-Stil (maximal 1-2 Sätze, kein Hass).".to_string(),
+                            _ => "Deliver a hilarious, theatrically exasperated nerd rant about a classic tech or office nuisance (like printers, DNS, JavaScript, endless meetings, or Wi-Fi drops) in classic humorous IRC style (maximum 1-2 sentences, purely funny venting, no hate speech).".to_string(),
+                        }
+                    }
+                };
+
+                let current_model = ctx.ai_manager.get_model();
+                let rant = ctx.ai_client.ask(&cmd.author, &prompt, Some(&current_model)).await?;
+                ctx.ai_manager.record_consumption(120);
+                Ok(Some(format!("🤬 [{}]: {}", ctx.locale.t("ai_rant_title"), rant.replace('\n', " "))))
+            }
+
             "whatis" | "def" => {
                 if args.is_empty() {
                     return Ok(Some(ctx.locale.t("ai_whatis_usage").to_string()));
@@ -357,5 +410,19 @@ impl Plugin for AiPlugin {
 
             _ => Ok(None),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_ai_plugin_triggers_and_help() {
+        let plugin = AiPlugin;
+        assert!(plugin.triggers().contains(&"rant"));
+        assert!(plugin.triggers().contains(&"tirade"));
+        assert!(plugin.triggers().contains(&"roast"));
+        assert!(plugin.help().contains("!rant"));
     }
 }

@@ -9,10 +9,12 @@ currency = ["moneda", "divisa"]
 translate = ["traducir", "tr"]
 birthday = ["cumpleaños", "cumple", "bday"]
 lang = ["idioma", "lengua", "lang"]
+rant = ["rant", "tirade"]
 
 [messages]
 weather_title = "Clima"
 lang_title = "Idioma"
+ai_rant_title = "Rant"
 
 [language_detection]
 distinct_words = [

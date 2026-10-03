@@ -146,6 +146,7 @@ All commands accept either an exclamation mark (`!`) or a period (`.`) by defaul
 | | `!catchup [count]` | Personal absence briefing summarizing recent discussions, commitments, and mentions. | `!catchup`, `!catchup 50` |
 | | `!vibe`, `!sentiment` | Evaluates channel sentiment, mood percentage, and trending topics in 1-2 lines. | `!vibe` |
 | | `!roast <nick>` | Generates a witty, playful nerd roast in classic IRC style. | `!roast Bob` |
+| | `!rant [topic]`, `!tirade` | Theatrically exasperated, hilarious nerd rant/tirade about any topic (or recent chat conversation). | `!rant printers`, `!rant` |
 | | `!whatis <term>`, `!def` | Razor-sharp, factual 1-line definition for technical terms or acronyms. | `!whatis BGP`, `!whatis Docker` |
 | | `!topic suggest` | AI generates a creative, relevant channel topic suggestion. | `!topic suggest` |
 | | `!rephrase`, `!klaartaal` | Rewrites complex, jargon-heavy, or convoluted sentences into simple, clear B1 language. Without args, targets the last message! | `!rephrase`, `!rephrase Bob`, `!rephrase This proposition lacks...` |
