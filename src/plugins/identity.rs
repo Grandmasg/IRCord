@@ -355,7 +355,7 @@ pub mod tests {
             assert_eq!(otp.len(), 6);
             assert!(otp.chars().all(|c| c.is_ascii_digit()));
             let val: u32 = otp.parse().unwrap();
-            assert!(val >= 100000 && val <= 999999);
+            assert!((100000..=999999).contains(&val));
         }
     }
 }

@@ -16,6 +16,7 @@ struct GeoLocation {
     timezone: Option<String>,
 }
 
+#[allow(dead_code)] // velden spiegelen de JSON van de externe API
 #[derive(Deserialize)]
 struct TimeApiResponse {
     date: Option<String>,
@@ -26,6 +27,7 @@ struct TimeApiResponse {
     day_of_week: Option<String>,
 }
 
+#[allow(dead_code)] // velden spiegelen de JSON van de externe API
 #[derive(Deserialize)]
 struct WorldTimeResponse {
     datetime: Option<String>,

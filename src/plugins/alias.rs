@@ -74,8 +74,8 @@ impl Plugin for AliasPlugin {
 
     async fn on_message(&self, ctx: &PluginContext, msg: &MessageEvent) -> Result<Option<String>, Box<dyn std::error::Error + Send + Sync>> {
         let trimmed = msg.content.trim();
-        if trimmed.starts_with('!') {
-            let trigger = trimmed[1..].split_whitespace().next().unwrap_or("").to_lowercase();
+        if let Some(after_bang) = trimmed.strip_prefix('!') {
+            let trigger = after_bang.split_whitespace().next().unwrap_or("").to_lowercase();
             let row = sqlx::query!("SELECT response FROM aliases WHERE trigger = ?", trigger)
                 .fetch_optional(&ctx.db)
                 .await?;

@@ -78,13 +78,6 @@ impl FreeTokenClient {
         req
     }
 
-    pub fn base_url(&self) -> &str {
-        &self.base_url
-    }
-
-    pub fn default_model(&self) -> &str {
-        &self.default_model
-    }
 
     /// Voert een prompt uit via de OpenAI-compatibele FreeToken API met standaard system prompt
     pub async fn ask(&self, user: &str, prompt: &str, custom_model: Option<&str>) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {

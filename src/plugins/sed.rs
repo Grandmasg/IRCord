@@ -179,7 +179,7 @@ impl Plugin for SedPlugin {
 
         if let Some(cmd) = parse_sed(trimmed) {
             let wanted = cmd.target.as_deref().unwrap_or(&msg.author);
-            let history = self.history.lock().unwrap();
+            let history = self.history.lock().unwrap_or_else(|e| e.into_inner());
             // Zoek van nieuw naar oud het eerste bericht van de gewenste nick waar het patroon in voorkomt.
             let found = history.get(&key).and_then(|h| {
                 h.iter()
@@ -199,7 +199,7 @@ impl Plugin for SedPlugin {
         }
 
         if !trimmed.is_empty() && !ctx.config.general.is_command_trigger(trimmed) {
-            let mut history = self.history.lock().unwrap();
+            let mut history = self.history.lock().unwrap_or_else(|e| e.into_inner());
             let h = history.entry(key).or_default();
             h.push_back((msg.author.clone(), msg.content.clone()));
             if h.len() > HISTORY_PER_CHANNEL {

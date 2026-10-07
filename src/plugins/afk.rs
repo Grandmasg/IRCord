@@ -30,7 +30,7 @@ impl Plugin for AfkPlugin {
         };
 
         {
-            let mut afk = self.afk_users.lock().unwrap();
+            let mut afk = self.afk_users.lock().unwrap_or_else(|e| e.into_inner());
             afk.insert(cmd.author.to_lowercase(), (reason.clone(), Instant::now()));
         }
 
@@ -42,7 +42,7 @@ impl Plugin for AfkPlugin {
 
         // 1. If the user chats again, clear AFK status
         {
-            let mut afk = self.afk_users.lock().unwrap();
+            let mut afk = self.afk_users.lock().unwrap_or_else(|e| e.into_inner());
             if let Some((_, start)) = afk.remove(&author_key) {
                 let mins = start.elapsed().as_secs() / 60;
                 let mins_str = mins.to_string();
@@ -52,7 +52,7 @@ impl Plugin for AfkPlugin {
 
         // 2. Check if someone mentions an AFK user
         let words: Vec<&str> = msg.content.split_whitespace().collect();
-        let afk = self.afk_users.lock().unwrap();
+        let afk = self.afk_users.lock().unwrap_or_else(|e| e.into_inner());
         for word in words {
             let clean_word = word.trim_matches(|c: char| !c.is_alphanumeric()).to_lowercase();
             if let Some((reason, start)) = afk.get(&clean_word) {

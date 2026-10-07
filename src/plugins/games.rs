@@ -46,7 +46,7 @@ impl Plugin for GamesPlugin {
             "roulette" => {
                 let chan_key = cmd.channel.to_lowercase();
                 let (is_bang, chamber, left) = {
-                    let mut games = self.roulette.lock().unwrap();
+                    let mut games = self.roulette.lock().unwrap_or_else(|e| e.into_inner());
                     let game = games.entry(chan_key.clone()).or_insert_with(RouletteGame::new);
                     game.current_chamber += 1;
                     let chamber = game.current_chamber;
@@ -110,8 +110,8 @@ impl Plugin for GamesPlugin {
                 let input = cmd.args.trim().to_lowercase();
                 let (count, sides) = if input.is_empty() {
                     (1, 6)
-                } else if input.starts_with('d') {
-                    let s: u32 = input[1..].parse().unwrap_or(6).clamp(2, 1000);
+                } else if let Some(sides_str) = input.strip_prefix('d') {
+                    let s: u32 = sides_str.parse().unwrap_or(6).clamp(2, 1000);
                     (1, s)
                 } else if let Some((c_str, s_str)) = input.split_once('d') {
                     let c: u32 = c_str.parse().unwrap_or(1).clamp(1, 50);

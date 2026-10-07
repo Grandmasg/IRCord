@@ -184,7 +184,7 @@ impl Plugin for RephrasePlugin {
         }
 
         // Bewaar de laatste 25 berichten per kanaal in het ringbuffer
-        let mut lock = self.recent_messages.lock().unwrap();
+        let mut lock = self.recent_messages.lock().unwrap_or_else(|e| e.into_inner());
         let queue = lock.entry(msg.channel.clone()).or_default();
 
         if queue.len() >= 25 {
@@ -212,7 +212,7 @@ impl Plugin for RephrasePlugin {
         // 1. Bepaal de brontekst:
         if target_arg.is_empty() {
             // Geen argumenten -> pak het laatste bericht van een ander in het actieve kanaal
-            let lock = self.recent_messages.lock().unwrap();
+            let lock = self.recent_messages.lock().unwrap_or_else(|e| e.into_inner());
             if let Some(queue) = lock.get(&cmd.channel) {
                 for item in queue.iter().rev() {
                     if !item.author.eq_ignore_ascii_case(&cmd.author) {
@@ -224,7 +224,7 @@ impl Plugin for RephrasePlugin {
             }
         } else if !target_arg.contains(' ') {
             // Enkel woord: controleer eerst of dit overeenkomt met een actieve nick in het kanaal
-            let lock = self.recent_messages.lock().unwrap();
+            let lock = self.recent_messages.lock().unwrap_or_else(|e| e.into_inner());
             let mut found_by_nick = false;
             if let Some(queue) = lock.get(&cmd.channel) {
                 for item in queue.iter().rev() {

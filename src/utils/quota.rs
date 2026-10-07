@@ -45,6 +45,7 @@ impl ApiQuotaGovernor {
     }
 
     /// Checks whether an API call is permitted using the default English locale.
+    #[allow(dead_code)] // gebruikt door tests; productiecode kiest altijd een taal
     pub fn check_and_increment(&self) -> Result<QuotaStatus, String> {
         self.check_and_increment_for_lang("en")
     }
@@ -56,7 +57,7 @@ impl ApiQuotaGovernor {
 
         // 1. Check 60-second window
         {
-            let mut w = self.window_minute.write().unwrap();
+            let mut w = self.window_minute.write().unwrap_or_else(|e| e.into_inner());
             if w.elapsed() >= Duration::from_secs(60) {
                 *w = now;
                 self.count_minutely.store(0, Ordering::Relaxed);
@@ -65,7 +66,7 @@ impl ApiQuotaGovernor {
 
         // 2. Check 3600-second window
         {
-            let mut w = self.window_hour.write().unwrap();
+            let mut w = self.window_hour.write().unwrap_or_else(|e| e.into_inner());
             if w.elapsed() >= Duration::from_secs(3600) {
                 *w = now;
                 self.count_hourly.store(0, Ordering::Relaxed);
@@ -74,7 +75,7 @@ impl ApiQuotaGovernor {
 
         // 3. Check 86400-second window
         {
-            let mut w = self.window_day.write().unwrap();
+            let mut w = self.window_day.write().unwrap_or_else(|e| e.into_inner());
             if w.elapsed() >= Duration::from_secs(86400) {
                 *w = now;
                 self.count_daily.store(0, Ordering::Relaxed);
@@ -152,21 +153,21 @@ impl ApiQuotaGovernor {
     pub fn get_status(&self) -> QuotaStatus {
         let now = Instant::now();
         {
-            let mut w = self.window_minute.write().unwrap();
+            let mut w = self.window_minute.write().unwrap_or_else(|e| e.into_inner());
             if w.elapsed() >= Duration::from_secs(60) {
                 *w = now;
                 self.count_minutely.store(0, Ordering::Relaxed);
             }
         }
         {
-            let mut w = self.window_hour.write().unwrap();
+            let mut w = self.window_hour.write().unwrap_or_else(|e| e.into_inner());
             if w.elapsed() >= Duration::from_secs(3600) {
                 *w = now;
                 self.count_hourly.store(0, Ordering::Relaxed);
             }
         }
         {
-            let mut w = self.window_day.write().unwrap();
+            let mut w = self.window_day.write().unwrap_or_else(|e| e.into_inner());
             if w.elapsed() >= Duration::from_secs(86400) {
                 *w = now;
                 self.count_daily.store(0, Ordering::Relaxed);

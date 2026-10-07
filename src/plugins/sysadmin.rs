@@ -5,6 +5,7 @@ use std::time::Instant;
 
 pub struct SysadminPlugin;
 
+#[allow(dead_code)] // velden spiegelen de JSON van de externe API
 #[derive(Deserialize, Debug)]
 struct DohAnswer {
     name: String,
@@ -15,6 +16,7 @@ struct DohAnswer {
     data: String,
 }
 
+#[allow(dead_code)] // velden spiegelen de JSON van de externe API
 #[derive(Deserialize, Debug)]
 struct DohResponse {
     #[serde(rename = "Status")]

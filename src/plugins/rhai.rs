@@ -18,12 +18,6 @@ impl RhaiPlugin {
         }
     }
 
-    pub fn with_dir<P: Into<PathBuf>>(dir: P) -> Self {
-        Self {
-            scripts_dir: dir.into(),
-        }
-    }
-
     fn create_sandboxed_engine() -> Engine {
         let mut engine = Engine::new();
         // Strikte resource limieten volgens beveiligingsspecificatie

@@ -17,7 +17,7 @@ impl ReactionsPlugin {
 
     fn check_and_set_cooldown(&self, channel: &str, category: &str, cooldown_secs: u64) -> bool {
         let key = format!("{}:{}", channel, category);
-        let mut lock = self.cooldowns.lock().unwrap();
+        let mut lock = self.cooldowns.lock().unwrap_or_else(|e| e.into_inner());
         let now = Instant::now();
 
         if let Some(last) = lock.get(&key) {

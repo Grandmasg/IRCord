@@ -4,6 +4,7 @@ use serde::Deserialize;
 
 pub struct MinecraftPlugin;
 
+#[allow(dead_code)] // velden spiegelen de JSON van de externe API
 #[derive(Deserialize)]
 struct McStatusResponse {
     online: bool,

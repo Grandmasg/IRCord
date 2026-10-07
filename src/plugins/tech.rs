@@ -26,6 +26,7 @@ struct GhReleaseResponse {
     published_at: Option<String>,
 }
 
+#[allow(dead_code)] // velden spiegelen de JSON van de externe API
 #[derive(Deserialize, Debug)]
 struct OsvSeverity {
     #[serde(rename = "type")]
@@ -33,6 +34,7 @@ struct OsvSeverity {
     score: String,
 }
 
+#[allow(dead_code)] // velden spiegelen de JSON van de externe API
 #[derive(Deserialize, Debug)]
 struct OsvResponse {
     id: String,
@@ -215,6 +217,7 @@ impl TechPlugin {
         }
     }
 
+    #[allow(dead_code)] // gebruikt door tests
     pub fn normalize_cve_query(input: &str) -> String {
         let mut query = input.trim().to_uppercase();
         if !query.starts_with("CVE-") && query.chars().all(|c| c.is_ascii_digit() || c == '-') {
@@ -223,6 +226,7 @@ impl TechPlugin {
         query
     }
 
+    #[allow(dead_code)] // gebruikt door tests
     pub fn parse_gh_repo(input: &str) -> Option<(String, String)> {
         let cleaned = input.trim().trim_start_matches("https://github.com/").trim_matches('/');
         let parts: Vec<&str> = cleaned.split('/').collect();

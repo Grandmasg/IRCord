@@ -35,7 +35,7 @@ impl TranslatePlugin {
         const WINDOW: usize = 5;
         const RESIDENT_MIN: usize = 3;
         let key = format!("{}/{}", channel.to_lowercase(), nick.to_lowercase());
-        let mut map = self.nick_history.lock().unwrap();
+        let mut map = self.nick_history.lock().unwrap_or_else(|e| e.into_inner());
         if map.len() > 2000 {
             map.clear();
         }
@@ -51,7 +51,7 @@ impl TranslatePlugin {
     async fn get_channel_settings(&self, ctx: &PluginContext, platform: &str, channel: &str) -> ChannelSettingsCache {
         let key = channel.to_lowercase();
         {
-            let lock = self.channel_cache.lock().unwrap();
+            let lock = self.channel_cache.lock().unwrap_or_else(|e| e.into_inner());
             if let Some(cached) = lock.get(&key) {
                 return cached.clone();
             }
@@ -82,14 +82,14 @@ impl TranslatePlugin {
             last_triggered: Instant::now() - Duration::from_secs(60),
         };
 
-        let mut lock = self.channel_cache.lock().unwrap();
+        let mut lock = self.channel_cache.lock().unwrap_or_else(|e| e.into_inner());
         lock.insert(key, entry.clone());
         entry
     }
 
     fn update_channel_settings(&self, channel: &str, lang_code: String, lang_name: String, auto_translate: bool) {
         let key = channel.to_lowercase();
-        let mut lock = self.channel_cache.lock().unwrap();
+        let mut lock = self.channel_cache.lock().unwrap_or_else(|e| e.into_inner());
         lock.insert(key, ChannelSettingsCache {
             language_code: lang_code,
             language_name: lang_name,
@@ -100,7 +100,7 @@ impl TranslatePlugin {
 
     fn check_and_set_cooldown(&self, channel: &str, cooldown_secs: u64) -> bool {
         let key = channel.to_lowercase();
-        let mut lock = self.channel_cache.lock().unwrap();
+        let mut lock = self.channel_cache.lock().unwrap_or_else(|e| e.into_inner());
         let now = Instant::now();
 
         if let Some(entry) = lock.get_mut(&key) {

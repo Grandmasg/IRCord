@@ -21,18 +21,18 @@ impl AiManager {
     }
 
     pub fn get_model(&self) -> String {
-        self.current_model.read().unwrap().clone()
+        self.current_model.read().unwrap_or_else(|e| e.into_inner()).clone()
     }
 
     pub fn set_model(&self, new_model: String) {
-        let mut model_lock = self.current_model.write().unwrap();
+        let mut model_lock = self.current_model.write().unwrap_or_else(|e| e.into_inner());
         info!("AI model gewijzigd van '{}' naar '{}'", *model_lock, new_model);
         *model_lock = new_model;
     }
 
     /// Controleert of het tokenbudget voor het lopende uur niet overschreden is
     pub fn can_consume(&self, estimated_tokens: u64) -> bool {
-        let mut window = self.budget_window_start.write().unwrap();
+        let mut window = self.budget_window_start.write().unwrap_or_else(|e| e.into_inner());
         if window.elapsed() >= Duration::from_secs(3600) {
             *window = Instant::now();
             self.tokens_consumed.store(0, Ordering::Relaxed);

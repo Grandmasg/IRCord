@@ -18,12 +18,12 @@ impl VisionHelper {
 
     /// Controleert of er al een beschrijving in de cache aanwezig is voor deze afbeeldings-URL
     pub fn get_cached_description(&self, url: &str) -> Option<String> {
-        let mut cache = self.cache.lock().unwrap();
+        let mut cache = self.cache.lock().unwrap_or_else(|e| e.into_inner());
         cache.get(url).cloned()
     }
 
     pub fn cache_description(&self, url: String, desc: String) {
-        let mut cache = self.cache.lock().unwrap();
+        let mut cache = self.cache.lock().unwrap_or_else(|e| e.into_inner());
         cache.put(url, desc);
     }
 

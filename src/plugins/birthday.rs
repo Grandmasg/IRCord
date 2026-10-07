@@ -4,6 +4,9 @@ use chrono::{Datelike, Local, NaiveDate};
 use sqlx::SqlitePool;
 use tracing::info;
 
+/// (id, user_id, platform, display_name, dag, maand, jaar, kanaal)
+type BirthdayRow = (i64, String, String, String, i64, i64, Option<i64>, String);
+
 pub struct BirthdayPlugin;
 
 impl BirthdayPlugin {
@@ -70,7 +73,7 @@ impl BirthdayPlugin {
         let current_month = today.month();
         let current_year = today.year();
 
-        let rows: Vec<(i64, String, String, String, i64, i64, Option<i64>, String)> = sqlx::query_as(
+        let rows: Vec<BirthdayRow> = sqlx::query_as(
             r#"
             SELECT id, user_id, platform, display_name, day, month, year, channel
             FROM birthdays

@@ -50,6 +50,9 @@ Drawing inspiration from classic bots such as [CloudBot](https://github.com/Tota
    - Discord native replies formatted cleanly for IRC: `<(Discord) Alice ↳ Bob>: Absolutely, that works!`
    - Anti-ping protection (zero-width spaces inserted into usernames) to prevent unwanted mentions.
    - Bidirectional LRU deduplication cache to eliminate relay loops.
+   - Edit and delete sync (`sync_edits`): edited Discord messages are announced on IRC (`✏️ <nick> (bewerkt): …`), deleted ones as `🗑️ nick heeft een bericht verwijderd` (the deleted text is never repeated).
+   - IRC presence (`sync_presence`): join, part and quit are posted to Discord (rate-limited against netsplit floods). Discord-to-IRC presence is not possible without privileged gateway intents and is not implemented.
+   - `!img <url>` and `!upload <url>` send an image embed or a file (max. 8 MB, no executables) from IRC to the linked Discord channel.
 
 2. **Multi-Channel & Multi-Server Matrix**
    - Pair an arbitrary number of IRC channels with Discord channels in a single daemon instance.
@@ -74,6 +77,8 @@ Drawing inspiration from classic bots such as [CloudBot](https://github.com/Tota
    - Flood guard with configurable delays and line byte limits.
    - Anti-raid: when `raid_threshold_joins_per_sec` users join a channel within one second, the bot sets it `+m` for `raid_mute_duration_sec` seconds (requires channel operator status).
    - Verified owner/operator identity: set `bot_owner_irc_account` and the bot requires the server-confirmed account (IRCv3 `account-tag`), so taking over the owner's nick gives no rights. Extra operators via `operator_irc_accounts` / `operator_discord_ids`.
+   - Role model: owner > operator > moderator > user. Moderators (`moderator_irc_accounts` / `moderator_discord_ids`) may use `!kick`, `!ban`, `!kb`, `!voice`, `!devoice`, `!topic`; `!op`/`!deop` and plugin management need an operator.
+   - Per-user rate limit on expensive commands (`!ai`, `!tr`, `!http`, `!dns`, `!yt`, `!g`, …): `expensive_commands_per_minute` (default 6, 0 = off); operators are exempt.
    - SSRF protection for every user-supplied URL (`!http`, `!ssl`, `!rss`, `!tldr`, link titles): public-only DNS resolution, per-hop redirect checks and response size limits.
    - Long Discord messages (> `pastebin_threshold_lines`) are truncated for IRC, or uploaded to dpaste.org when `pastebin_enabled = true` (opt-in: the text goes to a third party).
    - Live token and secret leak detection via `SafetyPlugin`.
@@ -197,6 +202,8 @@ All commands accept either an exclamation mark (`!`) or a period (`.`) by defaul
 | | `!cve`, `!security <id>` | Looks up vulnerability details and CVSS security scores from the official OSV.dev / NIST database. | `!cve CVE-2024-3094` |
 | **Sed (Passive)** | `s/old/new/[gi N]` | Sed-style correction: searches the last 50 channel messages for your latest one that matches. Real regex (`\1`, `&`), flags `g`/`i`/`N`, other delimiters (`s#a#b#`), and `nick: s/old/new/` to correct someone else. Output: `✏️ Alice meant: …` | `s/teh/the/`, `PjoT: s/mij/ik/` |
 | **Holidays** | `!vakantie [region]`, `!vakanties [year] [region]` | Dutch school holidays from the official Rijksoverheid open data API (free, keyless). Fetched at most once a year and cached in `data/`. | `!vakantie noord`, `!vakanties 2027` |
+| **Plugins** | `!plugin list`, `!plugin disable <name>`, `!plugin enable <name>` | Per-channel plugin switch (operators). Stored in the database and shared with the bridged channel; static defaults via `disabled_plugins` per `[[channels]]` entry. `help`, `plugins` and `admin` cannot be disabled. | `!plugin disable urban` |
+| **Media** | `!img <url>`, `!upload <url>` | IRC → Discord: shows an image embed, or uploads a file (max. 8 MB; executables and HTML are refused). | `!img https://example.com/cat.png` |
 | **Track** | `!track <word>`, `!track list`, `!untrack <word>` | Private-message alert when a new RSS article contains your keyword (max. 10 per user, IRC only). | `!track rust` |
 | **Stats** | `!peak` | Busiest day in the channel (most unique chatters / most messages), derived from the chat log. | `!peak` |
 | **URL Titler** | *Automatic* | Detects URLs in chat and posts page `<title>` previews. | `https://github.com/...` |
@@ -274,6 +281,8 @@ bot_owner_irc_nick = "YourNick"
 bot_owner_irc_account = "" # NickServ/SASL account; when set, the owner is recognised by verified account, not by nick
 operator_irc_accounts = []
 operator_discord_ids = []
+moderator_irc_accounts = []
+moderator_discord_ids = []
 http_port = 9090
 http_bind = "0.0.0.0" # "127.0.0.1" behind a reverse proxy
 pastebin_threshold_lines = 4
@@ -293,6 +302,7 @@ discord_channel_id = 123456789012345678
 discord_webhook_url = "https://discord.com/api/webhooks/..."
 # Optional channel-specific language: overrides [general].language for this channel
 # language = "en"
+# disabled_plugins = ["urban", "minecraft"] # plugins switched off in this channel
 
 [whatpulse]
 team_name = "Deapen"
@@ -313,9 +323,10 @@ irc_flood_delay_ms = 800
 irc_line_max_bytes = 380
 raid_threshold_joins_per_sec = 5
 raid_mute_duration_sec = 60
+expensive_commands_per_minute = 6 # per user; 0 = unlimited
 ```
 
-> **Reserved settings (not active yet):** `loop_prevent_timeout_sec`, `sync_presence`, `sync_edits`, `sliding_window_size` are accepted by the config parser but no feature reads them yet. Presence sync, edit sync and file/image bridging (`!upload`, `!img`) from the design spec are still on the roadmap.
+> **Reserved settings (not active yet):** `loop_prevent_timeout_sec` and `sliding_window_size` (plus the `[whatpulse]` keys `api_url` and `poll_interval_seconds`) are accepted by the config parser but no feature reads them yet.
 
 ---
 

@@ -14,6 +14,7 @@ struct LanguageDetectionConfig {
     casual_banter: Vec<String>,
 }
 
+#[allow(dead_code)] // meta wordt alleen gedeserialiseerd
 #[derive(Debug, Deserialize, Default)]
 struct LocaleFile {
     #[serde(default)]
@@ -219,11 +220,6 @@ impl LocaleManager {
         if let Ok(mut lock) = self.user_preferences.write() {
             lock.insert(key, lang.to_lowercase());
         }
-    }
-
-    /// Returns all distinct stopwords categorized by language code
-    pub fn all_distinct_words(&self) -> Arc<HashMap<String, Vec<String>>> {
-        Arc::clone(&self.distinct_words)
     }
 
     /// Returns distinct stopwords for a specific language

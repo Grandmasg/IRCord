@@ -22,10 +22,10 @@ impl Plugin for PollPlugin {
                 }
 
                 // Simple parser: question in quotes, options separated by slash
-                let (question, options_str) = if rest.starts_with('"') {
-                    if let Some(end_quote) = rest[1..].find('"') {
-                        let q = &rest[1..=end_quote];
-                        let opt = rest[end_quote + 2..].trim();
+                let (question, options_str) = if let Some(quoted) = rest.strip_prefix('"') {
+                    if let Some(end_quote) = quoted.find('"') {
+                        let q = &quoted[..end_quote];
+                        let opt = quoted[end_quote + 1..].trim();
                         (q, opt)
                     } else {
                         return Ok(Some(ctx.locale.t("poll_need_quotes").into()));

@@ -49,6 +49,9 @@ Geïnspireerd door klassieke bots zoals [CloudBot](https://github.com/TotallyNot
    - Weergave van Discord 'Reply-to' context op IRC: `<(Discord) Jan ↳ Piet>: Zeker, dat werkt!`
    - Anti-ping beveiliging (zero-width spaces tussen karakters van nicks) om ongewenste Discord mentions te voorkomen.
    - LRU Deduplicatie Cache om oneindige relay-loops waterdicht te blokkeren.
+   - Bewerk- en verwijder-sync (`sync_edits`): bewerkte Discord-berichten worden op IRC gemeld (`✏️ <nick> (bewerkt): …`), verwijderde als `🗑️ nick heeft een bericht verwijderd` (de verwijderde tekst wordt nooit herhaald).
+   - IRC-aanwezigheid (`sync_presence`): join, part en quit gaan naar Discord (met limiet tegen netsplit-floods). Aanwezigheid van Discord naar IRC kan niet zonder bevoorrechte gateway-intents en is niet geïmplementeerd.
+   - `!img <url>` en `!upload <url>` sturen een afbeelding-embed of bestand (max. 8 MB, geen uitvoerbare bestanden) van IRC naar het gekoppelde Discord-kanaal.
 
 2. **Multi-Channel & Multi-Server Matrix**
    - Eén enkele daemon kan willekeurig veel IRC-kanalen en Discord-kanalen paarsgewijs koppelen.
@@ -71,6 +74,8 @@ Geïnspireerd door klassieke bots zoals [CloudBot](https://github.com/TotallyNot
 6. **Beveiliging & Moderatie**
    - IRCv3 SASL authenticatie (veilig inloggen vóór kanaaljoin, vereist voor `+r` kanalen).
    - Ingebouwde flood guard met instelbare delays en byte limits.
+   - Rollenmodel: eigenaar > operator > moderator > gebruiker. Moderators (`moderator_irc_accounts` / `moderator_discord_ids`) mogen `!kick`, `!ban`, `!kb`, `!voice`, `!devoice`, `!topic`; `!op`/`!deop` en pluginbeheer vragen een operator.
+   - Limiet per gebruiker op dure commando's (`!ai`, `!tr`, `!http`, `!dns`, `!yt`, `!g`, …): `expensive_commands_per_minute` (standaard 6, 0 = uit); operators zijn vrijgesteld.
    - Anti-raid: als `raid_threshold_joins_per_sec` gebruikers binnen één seconde een kanaal joinen, zet de bot het `raid_mute_duration_sec` seconden op `+m` (vereist kanaaloperator-status).
    - Geverifieerde eigenaar/operator: vul `bot_owner_irc_account` in en de bot eist het door de server bevestigde account (IRCv3 `account-tag`). Het overnemen van de nick van de eigenaar geeft dan geen rechten. Extra operators via `operator_irc_accounts` / `operator_discord_ids`.
    - SSRF-bescherming voor elke door gebruikers opgegeven URL (`!http`, `!ssl`, `!rss`, `!tldr`, link-titels): DNS die alleen publieke adressen toestaat, controle van elke redirect en limiet op de grootte van antwoorden.
@@ -196,6 +201,8 @@ Alle commando's werken standaard met zowel een uitroepteken (`!`) als een punt (
 | | `!cve`, `!security <id>` | Zoekt kwetsbaarheden en CVSS-beveiligingsscores op via de officiële OSV.dev / NIST database. | `!cve CVE-2024-3094` |
 | **Sed (Passief)** | `s/oud/nieuw/[gi N]` | Sed-correctie: zoekt in de laatste 50 kanaalberichten naar jouw meest recente bericht dat past. Echte regex (`\1`, `&`), vlaggen `g`/`i`/`N`, andere delimiters (`s#a#b#`) en `nick: s/oud/nieuw/` om iemand anders te corrigeren. Uitvoer: `✏️ Alice bedoelde: …` | `s/fout/goed/`, `PjoT: s/mij/ik/` |
 | **Vakanties** | `!vakantie [regio]`, `!vakanties [jaar] [regio]` | Nederlandse schoolvakanties via de officiële open data API van Rijksoverheid (gratis, geen sleutel). Hooguit één keer per jaar opgehaald en gecachet in `data/`. | `!vakantie noord`, `!vakanties 2027` |
+| **Plugins** | `!plugin list`, `!plugin disable <naam>`, `!plugin enable <naam>` | Plugins per kanaal aan/uit zetten (operators). Wordt in de database bewaard en geldt ook voor het gekoppelde kanaal; vaste standaardwaarden via `disabled_plugins` per `[[channels]]`. `help`, `plugins` en `admin` kunnen niet uit. | `!plugin disable urban` |
+| **Media** | `!img <url>`, `!upload <url>` | IRC → Discord: toont een afbeelding-embed of uploadt een bestand (max. 8 MB; uitvoerbare bestanden en HTML worden geweigerd). | `!img https://example.com/kat.png` |
 | **Track** | `!track <woord>`, `!track list`, `!untrack <woord>` | Privébericht zodra een nieuw RSS-artikel jouw trefwoord bevat (max. 10 per gebruiker, alleen IRC). | `!track rust` |
 | **Stats** | `!peak` | Drukste dag in het kanaal (meeste unieke chatters / meeste berichten), afgeleid uit het chatlogboek. | `!peak` |
 | **URL Titler (Passief)** | *Automatisch* | Detecteert URL's in chat en toont direct de `<title>` van de pagina. | `https://github.com/...` |
@@ -292,6 +299,8 @@ bot_owner_irc_nick = "JouwNick"
 bot_owner_irc_account = "" # NickServ/SASL-account; indien ingesteld wordt de eigenaar herkend aan het bevestigde account, niet aan de nick
 operator_irc_accounts = []
 operator_discord_ids = []
+moderator_irc_accounts = []
+moderator_discord_ids = []
 http_port = 9090
 http_bind = "0.0.0.0" # "127.0.0.1" achter een reverse proxy
 pastebin_threshold_lines = 4
@@ -331,9 +340,10 @@ irc_flood_delay_ms = 800
 irc_line_max_bytes = 380
 raid_threshold_joins_per_sec = 5
 raid_mute_duration_sec = 60
+expensive_commands_per_minute = 6 # per gebruiker; 0 = onbeperkt
 ```
 
-> **Gereserveerde instellingen (nog niet actief):** `loop_prevent_timeout_sec`, `sync_presence`, `sync_edits`, `sliding_window_size` worden door de config gelezen, maar er is nog geen functie die ze gebruikt. Presence-sync, edit-sync en bestand-/afbeeldingsbridging (`!upload`, `!img`) uit de designspecificatie staan nog op de roadmap.
+> **Gereserveerde instellingen (nog niet actief):** `loop_prevent_timeout_sec` en `sliding_window_size` (en de `[whatpulse]`-sleutels `api_url` en `poll_interval_seconds`) worden door de config gelezen, maar er is nog geen functie die ze gebruikt.
 
 ---
 

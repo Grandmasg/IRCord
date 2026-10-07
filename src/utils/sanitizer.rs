@@ -2,7 +2,6 @@ use regex::Regex;
 use std::sync::OnceLock;
 
 static MIRC_REGEX: OnceLock<Regex> = OnceLock::new();
-static DISCORD_MENTION_REGEX: OnceLock<Regex> = OnceLock::new();
 static DISCORD_EMOJI_REGEX: OnceLock<Regex> = OnceLock::new();
 
 /// Inserts a zero-width space into the nickname to prevent unwanted highlights/pings on IRC.

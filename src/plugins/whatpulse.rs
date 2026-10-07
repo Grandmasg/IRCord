@@ -5,6 +5,7 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 use tracing::debug;
 
+#[allow(dead_code)] // velden spiegelen de JSON van de externe API
 #[derive(Debug, Deserialize, Clone)]
 pub struct WpTeamStats {
     #[serde(default = "default_team_name")]
@@ -46,6 +47,7 @@ struct WpApiTeamSearchResponse {
     teams: Option<Vec<WpApiTeamSummary>>,
 }
 
+#[allow(dead_code)] // velden spiegelen de JSON van de externe API
 #[derive(Debug, Deserialize)]
 struct WpApiTeamSummary {
     id: u64,
@@ -57,6 +59,7 @@ struct WpApiTeamShowResponse {
     team: Option<WpApiTeamDetails>,
 }
 
+#[allow(dead_code)] // velden spiegelen de JSON van de externe API
 #[derive(Debug, Deserialize)]
 struct WpApiTeamDetails {
     id: Option<u64>,
@@ -74,6 +77,7 @@ struct WpApiUserSearchResponse {
     users: Option<Vec<WpApiUserSummary>>,
 }
 
+#[allow(dead_code)] // velden spiegelen de JSON van de externe API
 #[derive(Debug, Deserialize)]
 struct WpApiUserSummary {
     id: u64,
@@ -99,6 +103,7 @@ struct WpApiUserTotals {
     download: Option<u64>,
 }
 
+#[allow(dead_code)] // velden spiegelen de JSON van de externe API
 #[derive(Debug, Deserialize)]
 struct WpApiUserRanks {
     keys: Option<u64>,
@@ -172,7 +177,7 @@ impl WhatPulsePlugin {
 
         // Check cache
         {
-            let cache = self.cached_data.lock().unwrap();
+            let cache = self.cached_data.lock().unwrap_or_else(|e| e.into_inner());
             if let Some((ref data, ref timestamp)) = *cache {
                 if timestamp.elapsed() < ttl {
                     debug!("WhatPulse statistieken opgehaald uit cache");
@@ -285,7 +290,7 @@ impl WhatPulsePlugin {
 
         // Update cache
         {
-            let mut cache = self.cached_data.lock().unwrap();
+            let mut cache = self.cached_data.lock().unwrap_or_else(|e| e.into_inner());
             *cache = Some((resp.clone(), Instant::now()));
         }
 

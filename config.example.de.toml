@@ -15,6 +15,9 @@ bot_owner_irc_account = ""
 # Zusätzliche Operatoren neben dem Besitzer (bestätigte IRC-Konten und Discord-Benutzer-IDs)
 operator_irc_accounts = []
 operator_discord_ids = []
+# Moderatoren dürfen kick/ban/voice/topic, aber kein op/deop oder Plugin-Verwaltung
+moderator_irc_accounts = []
+moderator_discord_ids = []
 
 # Adresse, an die der HTTP-Server gebunden wird (hinter einem Reverse-Proxy "127.0.0.1" verwenden)
 http_bind = "0.0.0.0"
@@ -52,6 +55,7 @@ sync_edits = true
 irc_channel = "#allgemein"
 discord_channel_id = 123456789012345678
 discord_webhook_url = "https://discord.com/api/webhooks/..."
+# disabled_plugins = ["urban"] # plugins uitgeschakeld in dit kanaal / disabled in this channel
 # Optionale kanalspezifische Sprache: überschreibt [general].language für diesen Kanal
 # (Die persönliche Spracheinstellung eines Nutzers via '!sprache' oder '!lang' hat stets höchste Priorität)
 # language = "de"
@@ -90,6 +94,8 @@ irc_flood_delay_ms = 800
 irc_line_max_bytes = 380
 raid_threshold_joins_per_sec = 5
 raid_mute_duration_sec = 60
+# Max. teure Befehle (!ai, !tr, !http, !dns, ...) pro Benutzer und Minute; 0 = unbegrenzt. Operatoren sind ausgenommen.
+expensive_commands_per_minute = 6
 
 # Open-Meteo Wetter-API Quota Governor (proaktive Ratenbegrenzung vor Überschreitung)
 [open_meteo]
