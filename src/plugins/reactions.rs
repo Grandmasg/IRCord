@@ -1,5 +1,6 @@
 use super::{MessageEvent, Plugin, PluginContext};
 use async_trait::async_trait;
+use chrono::Datelike;
 use std::collections::HashMap;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
@@ -186,6 +187,16 @@ impl Plugin for ReactionsPlugin {
                     "┬─┬ノ( º _ ºノ) Rustig maar \x02{}\x02, niet met de meubels gooien!",
                     msg.author
                 )));
+            }
+
+        // 7b. "is het al weekend?" (idee van Cjefke/IRCPlus)
+        if (lower.contains("al weekend") || lower.contains("already weekend") || lower.contains("weekend yet"))
+            && self.check_and_set_cooldown(&msg.channel, "weekend", 30) {
+                let idx = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis() as usize;
+                return Ok(Some(super::countdown::weekend_message(chrono::Local::now().date_naive().weekday(), idx, is_dutch)));
             }
 
         // 8. Shrug: ¯\_(ツ)_/¯

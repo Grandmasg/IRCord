@@ -1,8 +1,42 @@
 use super::{CommandEvent, Plugin, PluginContext};
 use async_trait::async_trait;
-use chrono::{Datelike, Local, NaiveDate};
+use chrono::{Datelike, Local, NaiveDate, Weekday};
 
 pub struct CountdownPlugin;
+
+const WEEKEND_QUOTES_NL: [&str; 5] = [
+    "Weekend vibes 😎",
+    "Bier, rust en chaos 🍻",
+    "Geen wekker = geluk ⏰",
+    "Vrijheid loading... 🔓",
+    "Slapen > alles 💤",
+];
+const WEEKEND_QUOTES_EN: [&str; 5] = [
+    "Weekend vibes 😎",
+    "Beer, rest and chaos 🍻",
+    "No alarm clock = happiness ⏰",
+    "Freedom loading... 🔓",
+    "Sleep > everything 💤",
+];
+
+/// Antwoord op "is het al weekend?": zaterdag en zondag zijn weekend; anders het aantal dagen tot zaterdag.
+/// `quote_idx` kiest een spreuk (modulo het aantal spreuken) zodat de functie testbaar blijft.
+pub fn weekend_message(weekday: Weekday, quote_idx: usize, dutch: bool) -> String {
+    let quotes = if dutch { &WEEKEND_QUOTES_NL } else { &WEEKEND_QUOTES_EN };
+    let quote = quotes[quote_idx % quotes.len()];
+    let days_to_saturday = 5 - weekday.num_days_from_monday() as i64; // ma=0 .. za=5, zo=6
+    let headline = match (weekday, dutch) {
+        (Weekday::Sat | Weekday::Sun, true) => "Ja! Het is weekend 😎".to_string(),
+        (Weekday::Sat | Weekday::Sun, false) => "Yes! It's the weekend 😎".to_string(),
+        (Weekday::Mon, true) => format!("Maandag-trauma 💀 nog {} dagen tot het weekend", days_to_saturday),
+        (Weekday::Mon, false) => format!("Monday trauma 💀 {} days until the weekend", days_to_saturday),
+        (_, true) if days_to_saturday == 1 => "Nee 😭 nog 1 dag: morgen is het zover!".to_string(),
+        (_, false) if days_to_saturday == 1 => "Not yet 😭 just 1 more day: tomorrow!".to_string(),
+        (_, true) => format!("Nee 😭 nog {} dagen tot het weekend", days_to_saturday),
+        (_, false) => format!("Not yet 😭 {} days until the weekend", days_to_saturday),
+    };
+    format!("{} {}", headline, quote)
+}
 
 impl CountdownPlugin {
     pub fn new() -> Self {
@@ -96,20 +130,29 @@ impl Plugin for CountdownPlugin {
             "nye",
             "countdown",
             "aftellen",
+            "weekend",
         ]
     }
 
     fn help(&self) -> &'static str {
-        "!kerst (of !kerts/!xmas) | !sint | !nieuwjaar | !countdown - Feestdagen countdown en aftellen naar Kerstmis"
+        "!kerst (of !kerts/!xmas) | !sint | !nieuwjaar | !weekend | !countdown - Feestdagen countdown en aftellen naar Kerstmis en het weekend"
     }
 
     async fn on_command(
         &self,
-        _ctx: &PluginContext,
+        ctx: &PluginContext,
         cmd: &CommandEvent,
     ) -> Result<Option<String>, Box<dyn std::error::Error + Send + Sync>> {
         let now = Local::now();
         let today = now.date_naive();
+
+        if cmd.trigger.eq_ignore_ascii_case("weekend") {
+            let idx = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis() as usize;
+            return Ok(Some(weekend_message(today.weekday(), idx, ctx.locale.is_dutch())));
+        }
         let trigger = cmd.trigger.to_lowercase();
 
         // 1. Kerstmis Countdown: !kerst / !kerts / !xmas / !christmas / !kerstmis / !kerstavond
@@ -303,5 +346,17 @@ mod tests {
         let jan1 = NaiveDate::from_ymd_opt(2026, 1, 1).unwrap();
         let (_, is_nye_today) = CountdownPlugin::days_until_new_year(jan1);
         assert!(is_nye_today);
+    }
+
+    #[test]
+    fn weekend_messages() {
+        assert!(weekend_message(Weekday::Sat, 0, true).starts_with("Ja! Het is weekend"));
+        assert!(weekend_message(Weekday::Sun, 0, false).starts_with("Yes! It's the weekend"));
+        assert!(weekend_message(Weekday::Mon, 0, true).contains("nog 5 dagen"));
+        assert!(weekend_message(Weekday::Wed, 0, true).contains("nog 3 dagen"));
+        assert!(weekend_message(Weekday::Fri, 0, true).contains("morgen is het zover"));
+        assert!(weekend_message(Weekday::Fri, 0, false).contains("tomorrow"));
+        // spreukindex valt netjes rond
+        assert_eq!(weekend_message(Weekday::Tue, 1, true), weekend_message(Weekday::Tue, 6, true));
     }
 }
