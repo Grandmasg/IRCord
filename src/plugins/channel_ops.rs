@@ -15,8 +15,15 @@ impl Plugin for ChannelOpsPlugin {
 
     async fn on_command(&self, ctx: &PluginContext, cmd: &CommandEvent) -> Result<Option<String>, Box<dyn std::error::Error + Send + Sync>> {
         // Enforce permissions: Must be owner or operator
-        if !cmd.is_owner && !cmd.is_operator {
-            return Ok(Some("⛔ Toegang geweigerd. Dit commando vereist operator- of bot-eigenaar-rechten.".into()));
+        // op/deop vereisen operator-rechten; kick/ban/voice/topic mogen ook door moderators
+        let needs_operator = matches!(cmd.trigger.as_str(), "op" | "deop");
+        let allowed = if needs_operator { cmd.is_owner || cmd.is_operator } else { cmd.is_owner || cmd.is_operator || cmd.is_moderator };
+        if !allowed {
+            return Ok(Some(if needs_operator {
+                "⛔ Toegang geweigerd. Dit commando vereist operator- of bot-eigenaar-rechten.".into()
+            } else {
+                "⛔ Toegang geweigerd. Dit commando vereist moderator-, operator- of bot-eigenaar-rechten.".to_string()
+            }));
         }
 
         let channel = &cmd.channel;

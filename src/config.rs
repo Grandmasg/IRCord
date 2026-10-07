@@ -48,6 +48,11 @@ pub struct GeneralConfig {
     pub operator_irc_accounts: Vec<String>,
     #[serde(default)]
     pub operator_discord_ids: Vec<u64>,
+    /// Moderators mogen kicken/bannen/voice/topic, maar geen op/deop of beheerfuncties.
+    #[serde(default)]
+    pub moderator_irc_accounts: Vec<String>,
+    #[serde(default)]
+    pub moderator_discord_ids: Vec<u64>,
     /// Bind-adres van de HTTP server (standaard 0.0.0.0; gebruik 127.0.0.1 achter een reverse proxy).
     #[serde(default = "default_http_bind")]
     pub http_bind: String,
@@ -114,6 +119,23 @@ impl GeneralConfig {
         }
     }
 
+    /// Moderator = operator (of eigenaar) of een expliciet vermelde moderator.
+    pub fn is_moderator(&self, platform: &str, author: &str, author_id: Option<&str>) -> bool {
+        if self.is_operator(platform, author, author_id) {
+            return true;
+        }
+        match platform {
+            "discord" => author_id
+                .and_then(|id| id.parse::<u64>().ok())
+                .map(|id| self.moderator_discord_ids.contains(&id))
+                .unwrap_or(false),
+            "irc" => Self::verified_irc_account(author_id)
+                .map(|a| self.moderator_irc_accounts.iter().any(|o| o.eq_ignore_ascii_case(a)))
+                .unwrap_or(false),
+            _ => false,
+        }
+    }
+
     /// Checks if a message starts with any configured command prefix
     pub fn is_command_trigger(&self, text: &str) -> bool {
         let trimmed = text.trim();
@@ -157,6 +179,7 @@ fn default_pastebin_threshold() -> usize {
     4
 }
 
+#[allow(dead_code)] // gereserveerde instellingen: nog niet gebruikt
 #[derive(Debug, Clone, Deserialize)]
 pub struct BridgeConfig {
     #[serde(default = "default_loop_timeout")]
@@ -188,8 +211,12 @@ pub struct ChannelMapping {
     pub discord_webhook_url: String,
     #[serde(default)]
     pub language: Option<String>,
+    /// Plugins (naam, zie !plugin list) die in dit kanaal uitgeschakeld zijn.
+    #[serde(default)]
+    pub disabled_plugins: Vec<String>,
 }
 
+#[allow(dead_code)] // gereserveerde instellingen: nog niet gebruikt
 #[derive(Debug, Clone, Deserialize)]
 pub struct WhatPulseConfig {
     pub team_name: String,
@@ -214,6 +241,7 @@ fn default_wp_cache_ttl() -> u64 {
     300
 }
 
+#[allow(dead_code)] // gereserveerde instellingen: nog niet gebruikt
 #[derive(Debug, Clone, Deserialize)]
 pub struct AiConfig {
     pub base_url: String,
@@ -254,6 +282,13 @@ pub struct ModerationConfig {
     pub raid_threshold_joins_per_sec: u32,
     #[serde(default = "default_raid_mute")]
     pub raid_mute_duration_sec: u64,
+    /// Max. aantal dure commando's (!ai, !http, !tr, ...) per gebruiker per minuut; 0 = geen limiet.
+    #[serde(default = "default_expensive_per_minute")]
+    pub expensive_commands_per_minute: u32,
+}
+
+fn default_expensive_per_minute() -> u32 {
+    6
 }
 
 fn default_irc_flood_delay() -> u64 {
@@ -340,6 +375,35 @@ impl Config {
     }
 }
 
+/// Minimale geldige configuratie voor tests (kanaal #test <-> Discord 42; eigenaar-account "Boss").
+#[cfg(test)]
+pub fn test_config(extra_general: &str, extra_moderation: &str) -> Config {
+    let toml = format!(
+        r##"
+        [general]
+        bot_owner_discord_id = 1
+        bot_owner_irc_nick = "BossNick"
+        bot_owner_irc_account = "Boss"
+        {extra_general}
+        [bridge]
+        [whatpulse]
+        team_name = "t"
+        api_url = "https://x"
+        [ai]
+        base_url = "http://127.0.0.1:9"
+        default_model = "m"
+        [moderation]
+        {extra_moderation}
+        [open_meteo]
+        [[channels]]
+        irc_channel = "#test"
+        discord_channel_id = 42
+        discord_webhook_url = "https://discord.com/api/webhooks/1"
+        "##
+    );
+    Config::load_from_str(&toml).expect("test config")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -367,7 +431,14 @@ mod tests {
         bot_owner_irc_account = "bossacct"
         operator_irc_accounts = ["helper"]
         operator_discord_ids = [7]
+        moderator_irc_accounts = ["mod"]
+        moderator_discord_ids = [9]
         "##).unwrap();
+        assert!(g.is_moderator("irc", "x", Some("irc-account:mod")));
+        assert!(g.is_moderator("irc", "x", Some("irc-account:helper")), "operator is ook moderator");
+        assert!(!g.is_operator("irc", "x", Some("irc-account:mod")));
+        assert!(g.is_moderator("discord", "x", Some("9")));
+        assert!(!g.is_moderator("irc", "mod", None));
         // Nick alleen is niet genoeg zodra een account is ingesteld
         assert!(!g.is_owner("irc", "Boss", None));
         assert!(!g.is_owner("irc", "Boss", Some("irc-account:someoneelse")));
