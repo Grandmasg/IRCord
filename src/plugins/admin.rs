@@ -8,21 +8,50 @@ static START_TIME: OnceLock<Instant> = OnceLock::new();
 pub struct AdminPlugin;
 
 impl AdminPlugin {
-    pub fn new() -> Self {
+    /// Legt het starttijdstip van de daemon vast. Moet bij het opstarten worden aangeroepen,
+    /// anders telt de uptime pas vanaf het eerste statuscommando.
+    pub fn init_start_time() {
         START_TIME.get_or_init(Instant::now);
-        Self
     }
+}
+
+/// Formatteert seconden als "3d 4u 12m 5s" (nul-eenheden vooraan worden weggelaten).
+fn format_duration(total: u64) -> String {
+    let (d, h, m, s) = (total / 86400, (total % 86400) / 3600, (total % 3600) / 60, total % 60);
+    if d > 0 {
+        format!("{}d {}u {}m {}s", d, h, m, s)
+    } else if h > 0 {
+        format!("{}u {}m {}s", h, m, s)
+    } else if m > 0 {
+        format!("{}m {}s", m, s)
+    } else {
+        format!("{}s", s)
+    }
+}
+
+/// Resident geheugen van dit proces in MB (alleen Linux/containers).
+fn resident_memory_mb() -> Option<u64> {
+    let status = std::fs::read_to_string("/proc/self/status").ok()?;
+    let kb = status.lines().find_map(|l| l.strip_prefix("VmRSS:"))?.split_whitespace().next()?.parse::<u64>().ok()?;
+    Some(kb / 1024)
 }
 
 #[async_trait]
 impl Plugin for AdminPlugin {
     fn name(&self) -> &'static str { "admin" }
-    fn triggers(&self) -> &[&'static str] { &["status", "stats", "ping", "errors", "errorlog", "logs"] }
-    fn help(&self) -> &'static str { "!status - Toont uptime en status | !errors [aantal|clear] - Toont recente fouten" }
+    fn triggers(&self) -> &[&'static str] { &["status", "stats", "ping", "uptime", "errors", "errorlog", "logs"] }
+    fn help(&self) -> &'static str { "!status - Toont status | !uptime - Draaitijd en geheugen | !errors [aantal|clear] - Toont recente fouten" }
 
     async fn on_command(&self, ctx: &PluginContext, cmd: &CommandEvent) -> Result<Option<String>, Box<dyn std::error::Error + Send + Sync>> {
         if cmd.trigger == "ping" {
             return Ok(Some("Pong! 🏓 Daemon actief.".into()));
+        }
+
+        if cmd.trigger == "uptime" {
+            let uptime = format_duration(START_TIME.get_or_init(Instant::now).elapsed().as_secs());
+            let plugin_count = ctx.plugins_info.read().map(|p| p.len()).unwrap_or(0);
+            let mem = resident_memory_mb().map(|m| format!(" | RAM: {} MB", m)).unwrap_or_default();
+            return Ok(Some(format!("⏱️ [Uptime] {} | Plugins: {} | Fouten in buffer: {}{}", uptime, plugin_count, ctx.error_logger.count(), mem)));
         }
 
         // Foutendiagnose & error logging
@@ -75,10 +104,7 @@ impl Plugin for AdminPlugin {
         }
 
         let start = START_TIME.get_or_init(Instant::now);
-        let uptime_secs = start.elapsed().as_secs();
-        let hours = uptime_secs / 3600;
-        let mins = (uptime_secs % 3600) / 60;
-        let secs = uptime_secs % 60;
+        let uptime = format_duration(start.elapsed().as_secs());
 
         let ai_online = ctx.ai_client.ping().await;
         let ai_status_str = if ai_online { "Online ✅" } else { "Offline ❌" };
@@ -87,8 +113,21 @@ impl Plugin for AdminPlugin {
         let current_model = ctx.ai_manager.get_model();
 
         Ok(Some(format!(
-            "🤖 [IRCord Status] Uptime: {}u {}m {}s | Kanalen: {} | AI: {} ({}) | Team: {}",
-            hours, mins, secs, channels_count, ai_status_str, current_model, ctx.config.whatpulse.team_name
+            "🤖 [IRCord Status] Uptime: {} | Kanalen: {} | AI: {} ({}) | Team: {}",
+            uptime, channels_count, ai_status_str, current_model, ctx.config.whatpulse.team_name
         )))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::format_duration;
+
+    #[test]
+    fn duration_formatting() {
+        assert_eq!(format_duration(5), "5s");
+        assert_eq!(format_duration(125), "2m 5s");
+        assert_eq!(format_duration(3 * 3600 + 61), "3u 1m 1s");
+        assert_eq!(format_duration(2 * 86400 + 3600), "2d 1u 0m 0s");
     }
 }

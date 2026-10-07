@@ -20,12 +20,11 @@ impl AiPlugin {
                 // Split on sentence boundaries
                 let mut current = String::new();
                 for sentence in trimmed.split_inclusive(&['.', '!', '?'][..]) {
-                    if current.len() + sentence.len() > 350 {
-                        if !current.is_empty() {
+                    if current.len() + sentence.len() > 350
+                        && !current.is_empty() {
                             lines.push(current.trim().to_string());
                             current.clear();
                         }
-                    }
                     current.push_str(sentence);
                 }
                 if !current.is_empty() {
@@ -40,15 +39,25 @@ impl AiPlugin {
 #[async_trait]
 impl Plugin for AiPlugin {
     fn name(&self) -> &'static str { "ai" }
-    fn triggers(&self) -> &[&'static str] { &["ai", "tldr", "summary", "topic", "roast", "rant", "tirade", "whatis", "def", "catchup", "digest", "vibe", "sentiment"] }
+    fn triggers(&self) -> &[&'static str] { &["ai", "setmodel", "tldr", "summary", "topic", "roast", "rant", "tirade", "whatis", "def", "catchup", "digest", "vibe", "sentiment"] }
     fn help(&self) -> &'static str {
-        "!ai <question> | !catchup [count] | !vibe | !tldr [url] | !topic | !roast <nick> | !rant [topic|nick] | !whatis <term>"
+        "!ai <question> | !setmodel <model> | !catchup [count] | !vibe | !tldr [url] | !topic | !roast <nick> | !rant [topic|nick] | !whatis <term>"
     }
 
     async fn on_command(&self, ctx: &PluginContext, cmd: &CommandEvent) -> Result<Option<String>, Box<dyn std::error::Error + Send + Sync>> {
         let args = cmd.args.trim();
 
         match cmd.trigger.as_str() {
+            "setmodel" => {
+                if !cmd.is_owner && !cmd.is_operator {
+                    return Ok(Some(format!("⛔ {}", ctx.locale.t("ai_admin_only"))));
+                }
+                if args.is_empty() {
+                    return Ok(Some(ctx.locale.t("ai_model_usage").to_string()));
+                }
+                ctx.ai_manager.set_model(args.to_string());
+                Ok(Some(format!("✅ {}", ctx.locale.tf("ai_model_changed", &[("model", args)]))))
+            }
             "ai" => {
                 if args.is_empty() {
                     return Ok(Some(ctx.locale.t("ai_usage").to_string()));
@@ -121,9 +130,8 @@ impl Plugin for AiPlugin {
                         return Ok(Some(format!("⛔ {}", ctx.locale.t("ai_url_blocked"))));
                     }
 
-                    let resp = match ctx.http.get(url)
+                    let resp = match crate::utils::ssrf::safe_client().get(url)
                         .timeout(std::time::Duration::from_secs(6))
-                        .header("User-Agent", "Mozilla/5.0 (compatible; IRCordBot/1.0)")
                         .send()
                         .await
                     {
@@ -131,7 +139,7 @@ impl Plugin for AiPlugin {
                         _ => return Ok(Some(format!("📝 {}", ctx.locale.tf("ai_url_failed", &[("url", url)])))),
                     };
 
-                    let body = resp.text().await.unwrap_or_default();
+                    let body = String::from_utf8_lossy(&crate::utils::ssrf::read_limited(resp, 512 * 1024).await).into_owned();
                     let extracted_text = {
                         let document = Html::parse_document(&body);
                         let p_selector = Selector::parse("p, article p").unwrap();

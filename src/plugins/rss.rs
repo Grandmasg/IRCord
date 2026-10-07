@@ -1,7 +1,6 @@
 use super::{CommandEvent, Plugin, PluginContext};
 use async_trait::async_trait;
 use sqlx::{Row, SqlitePool};
-use reqwest::Client;
 
 pub struct RssPlugin;
 
@@ -38,6 +37,11 @@ impl Plugin for RssPlugin {
 
         let action = parts[0].to_lowercase();
 
+        // Feeds toevoegen of verwijderen raakt alle kanalen: alleen voor operators
+        if matches!(action.as_str(), "add" | "del" | "delete" | "remove") && !cmd.is_owner && !cmd.is_operator {
+            return Ok(Some("⛔ [RSS] Feeds toevoegen of verwijderen kan alleen door bot-operators.".into()));
+        }
+
         match action.as_str() {
             "add" => {
                 if parts.len() < 2 {
@@ -53,9 +57,9 @@ impl Plugin for RssPlugin {
                 let target_channel = parts.get(2).map(|s| s.to_string()).unwrap_or_else(|| cmd.channel.clone());
 
                 // Fetch and validate feed with feed-rs
-                let resp = ctx.http.get(url).timeout(std::time::Duration::from_secs(8)).send().await;
+                let resp = crate::utils::ssrf::safe_client().get(url).timeout(std::time::Duration::from_secs(8)).send().await;
                 let bytes = match resp {
-                    Ok(r) if r.status().is_success() => r.bytes().await?,
+                    Ok(r) if r.status().is_success() => crate::utils::ssrf::read_limited(r, 2 * 1024 * 1024).await,
                     Ok(r) => return Ok(Some(format!("⚠️ Feed server returned status code: {}", r.status()))),
                     Err(e) => return Ok(Some(format!("❌ Failed to connect to feed URL: {}", e))),
                 };
@@ -169,9 +173,9 @@ impl Plugin for RssPlugin {
                 let feed_url: String = feed_record.try_get("url").unwrap_or_default();
                 let feed_title: String = feed_record.try_get("title").unwrap_or_else(|_| "RSS".into());
 
-                let resp = ctx.http.get(&feed_url).timeout(std::time::Duration::from_secs(8)).send().await;
+                let resp = crate::utils::ssrf::safe_client().get(&feed_url).timeout(std::time::Duration::from_secs(8)).send().await;
                 let bytes = match resp {
-                    Ok(r) if r.status().is_success() => r.bytes().await?,
+                    Ok(r) if r.status().is_success() => crate::utils::ssrf::read_limited(r, 2 * 1024 * 1024).await,
                     Ok(r) => return Ok(Some(format!("⚠️ Feed server returned status code: {}", r.status()))),
                     Err(e) => return Ok(Some(format!("❌ Failed to connect to feed: {}", e))),
                 };
@@ -192,9 +196,11 @@ impl Plugin for RssPlugin {
 }
 
 impl RssPlugin {
-    /// Background poller to check feeds and return new items to broadcast
-    pub async fn poll_new_articles(db: &SqlitePool, http: &Client) -> Vec<(String, String)> {
+    /// Background poller: geeft `(doel, bericht)` terug voor nieuwe artikelen. Doel is een kanaal of, bij
+    /// trefwoord-alerts (`!track`), een IRC-nick voor een privébericht. Max. 3 nieuwe artikelen per feed per ronde.
+    pub async fn poll_new_articles(db: &SqlitePool) -> Vec<(String, String)> {
         let mut broadcasts = Vec::new();
+        let http = crate::utils::ssrf::safe_client();
 
         let feeds = match sqlx::query("SELECT id, url, title, last_guid FROM feeds").fetch_all(db).await {
             Ok(f) => f,
@@ -211,43 +217,64 @@ impl RssPlugin {
                 Ok(r) if r.status().is_success() => r,
                 _ => continue,
             };
+            let bytes = crate::utils::ssrf::read_limited(resp, 2 * 1024 * 1024).await;
+            let Ok(parsed) = feed_rs::parser::parse(&bytes[..]) else { continue };
 
-            let bytes = match resp.bytes().await {
-                Ok(b) => b,
-                _ => continue,
+            // Alle artikelen nieuwer dan de laatst geziene (feeds staan nieuwste-eerst); zonder referentie alleen de nieuwste.
+            let mut fresh: Vec<_> = match last_guid.as_deref() {
+                Some(last) => parsed.entries.iter().take_while(|e| e.id != last).take(3).collect(),
+                None => parsed.entries.iter().take(1).collect(),
             };
+            if fresh.is_empty() {
+                continue;
+            }
+            fresh.reverse(); // oudste eerst aankondigen
 
-            let parsed = match feed_rs::parser::parse(&bytes[..]) {
-                Ok(p) => p,
-                _ => continue,
-            };
+            let newest_id = parsed.entries.first().map(|e| e.id.clone()).unwrap_or_default();
+            let _ = sqlx::query("UPDATE feeds SET last_guid = ?, last_checked_at = CURRENT_TIMESTAMP WHERE id = ?")
+                .bind(&newest_id)
+                .bind(id)
+                .execute(db)
+                .await;
 
-            let Some(newest) = parsed.entries.first() else { continue };
+            let subs = sqlx::query("SELECT target_id FROM feed_subscriptions WHERE feed_id = ?")
+                .bind(id)
+                .fetch_all(db)
+                .await
+                .unwrap_or_default();
 
-            // Check if this article is new
-            if last_guid.as_deref() != Some(&newest.id) {
-                // Update last_guid in DB
-                let _ = sqlx::query("UPDATE feeds SET last_guid = ?, last_checked_at = CURRENT_TIMESTAMP WHERE id = ?")
-                    .bind(&newest.id)
-                    .bind(id)
-                    .execute(db)
-                    .await;
-
-                let entry_title = newest.title.as_ref().map(|t| t.content.clone()).unwrap_or_else(|| "New Article".into());
-                let link = newest.links.first().map(|l| l.href.clone()).unwrap_or_default();
-
+            for entry in fresh {
+                let entry_title = entry.title.as_ref().map(|t| t.content.clone()).unwrap_or_else(|| "New Article".into());
+                let summary = entry.summary.as_ref().map(|t| t.content.clone()).unwrap_or_default();
+                let link = entry.links.first().map(|l| l.href.clone()).unwrap_or_default();
                 let message = format!("📰 [{}] \x02{}\x02: {}", title, entry_title, link);
 
-                // Find subscribed channels
-                if let Ok(subs) = sqlx::query("SELECT target_id FROM feed_subscriptions WHERE feed_id = ?").bind(id).fetch_all(db).await {
-                    for sub in subs {
-                        let target_id: String = sub.try_get("target_id").unwrap_or_default();
-                        broadcasts.push((target_id, message.clone()));
-                    }
+                for sub in &subs {
+                    let target_id: String = sub.try_get("target_id").unwrap_or_default();
+                    broadcasts.push((target_id, message.clone()));
                 }
+                broadcasts.extend(Self::keyword_alerts(db, &title, &entry_title, &summary, &link).await);
             }
         }
 
         broadcasts
+    }
+
+    /// Zoekt gebruikers (`!track`) wier trefwoord in titel of samenvatting voorkomt; max. één alert per gebruiker.
+    async fn keyword_alerts(db: &SqlitePool, feed: &str, title: &str, summary: &str, link: &str) -> Vec<(String, String)> {
+        let haystack = format!("{} {}", title, summary).to_lowercase();
+        let Ok(rows) = sqlx::query("SELECT user_id, keyword FROM user_tracks WHERE platform = 'irc'").fetch_all(db).await else {
+            return Vec::new();
+        };
+        let mut seen = std::collections::HashSet::new();
+        let mut alerts = Vec::new();
+        for r in rows {
+            let user: String = r.try_get("user_id").unwrap_or_default();
+            let kw: String = r.try_get("keyword").unwrap_or_default();
+            if !kw.is_empty() && haystack.contains(&kw.to_lowercase()) && seen.insert(user.clone()) {
+                alerts.push((user, format!("🔔 [Track: {}] [{}] \x02{}\x02: {}", kw, feed, title, link)));
+            }
+        }
+        alerts
     }
 }
