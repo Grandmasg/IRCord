@@ -1,4 +1,4 @@
-use super::{BridgeMessage, Platform, ReplyContext};
+use super::BridgeMessage;
 use crate::config::ChannelMapping;
 use crate::utils::sanitizer::{anti_ping_nick, sanitize_discord_emojis, sanitize_for_irc, strip_mirc_codes};
 use lru::LruCache;
@@ -112,10 +112,7 @@ impl BridgeRouter {
                 return true;
             }
         }
-        if trimmed.starts_with('~') || trimmed.starts_with('/') {
-            return true;
-        }
-        false
+        trimmed.starts_with('~') || trimmed.starts_with('/')
     }
 
     /// Formatteert een binnenkomend Discord-bericht voor weergave op IRC
@@ -144,6 +141,7 @@ impl BridgeRouter {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::bridge::{Platform, ReplyContext};
 
     #[test]
     fn test_format_for_irc() {

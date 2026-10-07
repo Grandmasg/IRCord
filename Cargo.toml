@@ -32,6 +32,8 @@ hex = "0.4"
 notify = "6.1"
 lru = "0.12"
 rand = "0.8"
+url = "2"
+lingua = { version = "1.8", default-features = false, features = ["dutch", "english", "german", "french", "spanish", "italian", "portuguese"] }
 
 [dev-dependencies]
 tokio-test = "0.4"

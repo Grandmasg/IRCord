@@ -3,3 +3,6 @@ pub mod lifecycle;
 pub mod error_log;
 pub mod i18n;
 pub mod quota;
+pub mod langdetect;
+pub mod ssrf;
+pub mod pastebin;

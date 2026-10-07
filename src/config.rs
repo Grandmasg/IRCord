@@ -39,10 +39,25 @@ pub struct GeneralConfig {
     pub command_prefixes: Vec<String>,
     pub bot_owner_discord_id: u64,
     pub bot_owner_irc_nick: String,
+    /// NickServ/SASL-account van de eigenaar. Als dit is ingesteld, telt een IRC-nick alleen als
+    /// eigenaar wanneer de server dit account bevestigt (IRCv3 `account-tag`); nick alleen is dan niet genoeg.
+    #[serde(default)]
+    pub bot_owner_irc_account: String,
+    /// Extra operators (naast de eigenaar): bevestigde IRC-accounts en Discord-gebruikers-ID's.
+    #[serde(default)]
+    pub operator_irc_accounts: Vec<String>,
+    #[serde(default)]
+    pub operator_discord_ids: Vec<u64>,
+    /// Bind-adres van de HTTP server (standaard 0.0.0.0; gebruik 127.0.0.1 achter een reverse proxy).
+    #[serde(default = "default_http_bind")]
+    pub http_bind: String,
     #[serde(default = "default_http_port")]
     pub http_port: u16,
     #[serde(default = "default_pastebin_threshold")]
     pub pastebin_threshold_lines: usize,
+    /// Upload lange Discord-berichten naar dpaste.org (derde partij!) i.p.v. ze in te korten. Standaard uit.
+    #[serde(default)]
+    pub pastebin_enabled: bool,
     #[serde(default = "default_admin_channel_irc")]
     pub admin_channel_irc: String,
     #[serde(default = "default_admin_channel_discord")]
@@ -59,6 +74,44 @@ impl GeneralConfig {
             }
         }
         None
+    }
+
+    fn verified_irc_account(author_id: Option<&str>) -> Option<&str> {
+        author_id.and_then(|id| id.strip_prefix(IRC_ACCOUNT_PREFIX)).filter(|a| !a.is_empty())
+    }
+
+    /// Is deze afzender de bot-eigenaar? IRC: via bevestigd account (indien ingesteld), anders via nick (legacy).
+    pub fn is_owner(&self, platform: &str, author: &str, author_id: Option<&str>) -> bool {
+        match platform {
+            "discord" => self.bot_owner_discord_id != 0 && author_id == Some(self.bot_owner_discord_id.to_string().as_str()),
+            "irc" => {
+                if self.bot_owner_irc_account.trim().is_empty() {
+                    author.eq_ignore_ascii_case(&self.bot_owner_irc_nick)
+                } else {
+                    Self::verified_irc_account(author_id)
+                        .map(|a| a.eq_ignore_ascii_case(self.bot_owner_irc_account.trim()))
+                        .unwrap_or(false)
+                }
+            }
+            _ => false,
+        }
+    }
+
+    /// Operator = eigenaar of een expliciet vermelde operator (bevestigd IRC-account / Discord-ID).
+    pub fn is_operator(&self, platform: &str, author: &str, author_id: Option<&str>) -> bool {
+        if self.is_owner(platform, author, author_id) {
+            return true;
+        }
+        match platform {
+            "discord" => author_id
+                .and_then(|id| id.parse::<u64>().ok())
+                .map(|id| self.operator_discord_ids.contains(&id))
+                .unwrap_or(false),
+            "irc" => Self::verified_irc_account(author_id)
+                .map(|a| self.operator_irc_accounts.iter().any(|o| o.eq_ignore_ascii_case(a)))
+                .unwrap_or(false),
+            _ => false,
+        }
     }
 
     /// Checks if a message starts with any configured command prefix
@@ -88,6 +141,13 @@ fn default_admin_channel_irc() -> String {
 fn default_admin_channel_discord() -> u64 {
     0
 }
+
+fn default_http_bind() -> String {
+    "0.0.0.0".to_string()
+}
+
+/// Prefix waarmee een door de IRC-server bevestigd account in `author_id` wordt doorgegeven.
+pub const IRC_ACCOUNT_PREFIX: &str = "irc-account:";
 
 fn default_http_port() -> u16 {
     9090
@@ -297,6 +357,28 @@ mod tests {
         let de_cfg = Config::load_from_file("config.example.de.toml").expect("config.example.de.toml should be valid");
         assert_eq!(de_cfg.general.language, "de");
         assert_eq!(de_cfg.general.command_prefixes, vec!["!", "."]);
+    }
+
+    #[test]
+    fn test_owner_and_operator_identity() {
+        let g: GeneralConfig = toml::from_str(r##"
+        bot_owner_discord_id = 42
+        bot_owner_irc_nick = "Boss"
+        bot_owner_irc_account = "bossacct"
+        operator_irc_accounts = ["helper"]
+        operator_discord_ids = [7]
+        "##).unwrap();
+        // Nick alleen is niet genoeg zodra een account is ingesteld
+        assert!(!g.is_owner("irc", "Boss", None));
+        assert!(!g.is_owner("irc", "Boss", Some("irc-account:someoneelse")));
+        assert!(g.is_owner("irc", "whatever", Some("irc-account:BossAcct")));
+        assert!(g.is_owner("discord", "x", Some("42")));
+        assert!(!g.is_owner("discord", "x", Some("43")));
+        // Een Discord-ID kan nooit als IRC-account doorgaan
+        assert!(!g.is_operator("irc", "x", Some("7")));
+        assert!(g.is_operator("irc", "x", Some("irc-account:helper")));
+        assert!(g.is_operator("discord", "x", Some("7")));
+        assert!(!g.is_operator("irc", "helper", None));
     }
 
     #[test]

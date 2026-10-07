@@ -1,4 +1,4 @@
-use super::flood::{chunk_irc_message, TokenBucketLimiter};
+use super::flood::{chunk_irc_message, RaidGuard, TokenBucketLimiter};
 use crate::bridge::{BridgeMessage, Platform};
 use crate::config::Config;
 use crate::utils::sanitizer::sanitize_for_irc;
@@ -7,12 +7,12 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::TcpStream;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio_util::sync::CancellationToken;
-use tracing::{error, info, warn};
+use tracing::{info, warn};
 
 /// Eenvoudige, veilige Base64-encoder voor SASL PLAIN authenticatie
 fn base64_encode(input: &[u8]) -> String {
     const CHARSET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut out = String::with_capacity((input.len() + 2) / 3 * 4);
+    let mut out = String::with_capacity(input.len().div_ceil(3) * 4);
     for chunk in input.chunks(3) {
         let b0 = chunk[0];
         let b1 = chunk.get(1).copied().unwrap_or(0);
@@ -34,6 +34,25 @@ fn base64_encode(input: &[u8]) -> String {
         }
     }
     out
+}
+
+/// Knipt IRCv3 message tags van een regel en geeft het door de server bevestigde account terug.
+fn split_tags(raw: &str) -> (Option<String>, &str) {
+    if !raw.starts_with('@') {
+        return (None, raw);
+    }
+    let (tags, rest) = raw.split_once(' ').unwrap_or((raw, ""));
+    let account = tags[1..]
+        .split(';')
+        .find_map(|t| t.strip_prefix("account="))
+        .filter(|a| !a.is_empty() && *a != "*")
+        .map(str::to_string);
+    (account, rest.trim_start())
+}
+
+/// Haalt de chattekst uit `:prefix PRIVMSG <target> :tekst` (veilig voor IPv6-hosts met dubbelepunten).
+fn privmsg_text(raw: &str) -> Option<&str> {
+    raw.splitn(4, ' ').nth(3).map(|rest| rest.strip_prefix(':').unwrap_or(rest))
 }
 
 pub struct IrcClient {
@@ -107,14 +126,24 @@ impl IrcClient {
 
         if has_sasl {
             info!("IRC verbinding gestart met IRCv3 CAP & SASL PLAIN handshake...");
-            writer.write_all(b"CAP LS 302\r\nCAP REQ :sasl\r\n").await?;
+            // account-tag laat de server per bericht het geverifieerde account meesturen (eigenaar-/operatorcheck)
+            writer.write_all(b"CAP LS 302\r\nCAP REQ :sasl\r\nCAP REQ :account-tag\r\n").await?;
         } else {
-            // Reguliere directe handshake
-            writer.write_all(format!("NICK {}\r\nUSER {} 0 * :IRCord Hybrid Bot\r\n", nick, nick).as_bytes()).await?;
+            // Reguliere handshake; account-tag aanvragen en de CAP-onderhandeling direct afsluiten
+            writer.write_all(format!("CAP REQ :account-tag\r\nCAP END\r\nNICK {}\r\nUSER {} 0 * :IRCord Hybrid Bot\r\n", nick, nick).as_bytes()).await?;
         }
 
         let mut limiter = TokenBucketLimiter::new(self.config.moderation.irc_flood_delay_ms);
         let mut line_buf = String::new();
+
+        // Anti-raid: bij een join-flood zetten we het kanaal tijdelijk op +m en halen dat daarna weer weg
+        let mut raid_guard = RaidGuard::new(
+            self.config.moderation.raid_threshold_joins_per_sec,
+            std::time::Duration::from_secs(1),
+        );
+        let raid_mute = std::time::Duration::from_secs(self.config.moderation.raid_mute_duration_sec);
+        let mut unmute_at: std::collections::HashMap<String, std::time::Instant> = std::collections::HashMap::new();
+        let mut raid_tick = tokio::time::interval(std::time::Duration::from_secs(2));
 
         loop {
             line_buf.clear();
@@ -127,7 +156,14 @@ impl IrcClient {
                         return Err("IRC Socket gesloten door remote host".into());
                     }
 
-                    let raw = line_buf.trim();
+                    let mut raw = line_buf.trim();
+                    if raw.is_empty() {
+                        continue;
+                    }
+
+                    // IRCv3 message tags (`@account=foo;time=... :prefix COMMAND ...`) los knippen
+                    let (tag_account, rest) = split_tags(raw);
+                    raw = rest;
                     if raw.is_empty() {
                         continue;
                     }
@@ -146,7 +182,7 @@ impl IrcClient {
                         continue;
                     }
 
-                    if raw.contains("CAP") && raw.contains("NAK") {
+                    if raw.contains("CAP") && raw.contains("NAK") && raw.contains("sasl") {
                         warn!("Server weigert CAP sasl. Doorgaan met directe login...");
                         writer.write_all(format!("CAP END\r\nNICK {}\r\nUSER {} 0 * :IRCord Hybrid Bot\r\n", nick, nick).as_bytes()).await?;
                         continue;
@@ -201,6 +237,21 @@ impl IrcClient {
                         }
                     }
 
+                    // JOIN-flood detectie (alleen joins van anderen)
+                    if parts.len() > 2 && parts[1] == "JOIN" {
+                        let joiner = parts[0].trim_start_matches(':').split('!').next().unwrap_or("");
+                        let chan = parts[2].trim_start_matches(':');
+                        if !joiner.eq_ignore_ascii_case(nick)
+                            && chan.starts_with('#')
+                            && raid_guard.record_join(chan, std::time::Instant::now())
+                            && !unmute_at.contains_key(&chan.to_lowercase())
+                        {
+                            warn!("🚨 Join-flood gedetecteerd in {}: kanaal {}s op +m", chan, raid_mute.as_secs());
+                            writer.write_all(format!("MODE {} +m\r\n", chan).as_bytes()).await?;
+                            unmute_at.insert(chan.to_lowercase(), std::time::Instant::now() + raid_mute);
+                        }
+                    }
+
                     // KICK afhandeling: Auto-rejoin bij kick van de bot
                     if parts.len() > 3 && parts[1] == "KICK" {
                         let kicked_chan = parts[2];
@@ -229,10 +280,10 @@ impl IrcClient {
                         let sender_nick = prefix.split('!').next().unwrap_or("onbekend");
                         let target_chan = parts[2];
 
-                        // Parse de eigenlijke chattekst (alles na de dubbelepunt van arg 4)
-                        if let Some(colon_idx) = raw[1..].find(':') {
-                            let text = &raw[colon_idx + 2..];
-
+                        // Parse de eigenlijke chattekst: alles na `:prefix PRIVMSG <target> :`
+                        // (niet op de eerste ':' zoeken; hostnamen kunnen IPv6-dubbelepunten bevatten)
+                        let text_opt = privmsg_text(raw);
+                        if let Some(text) = text_opt {
                             // CTCP Queries afhandelen (bijv. VERSION, PING, TIME)
                             let trimmed_text = text.trim();
                             if trimmed_text.starts_with('\x01') && trimmed_text.ends_with('\x01') {
@@ -275,7 +326,10 @@ impl IrcClient {
                                     source_platform: Platform::Irc,
                                     source_channel: target_chan.to_string(),
                                     author_name: sender_nick.to_string(),
-                                    author_id: None,
+                                    // Door de server bevestigd account (voor eigenaar/operator-checks)
+                                    author_id: tag_account
+                                        .as_ref()
+                                        .map(|a| format!("{}{}", crate::config::IRC_ACCOUNT_PREFIX, a)),
                                     content: text.to_string(),
                                     reply_to: None,
                                     is_action: text.starts_with("\x01ACTION"),
@@ -290,7 +344,9 @@ impl IrcClient {
                 // Uitgaande ruwe IRC commando's (KICK, MODE, TOPIC, JOIN etc.)
                 raw_cmd = self.raw_cmd_rx.recv() => {
                     if let Some(cmd) = raw_cmd {
-                        let clean = cmd.trim();
+                        // Nooit CR/LF/NUL doorlaten: voorkomt injectie van extra IRC-commando's
+                        let clean_owned = cmd.replace(['\r', '\n', '\0'], " ");
+                        let clean = clean_owned.trim();
                         if !clean.is_empty() {
                             limiter.wait_for_slot().await;
                             let line = format!("{}\r\n", clean);
@@ -316,6 +372,17 @@ impl IrcClient {
                     }
                 }
 
+                // Verlopen raid-mutes opheffen
+                _ = raid_tick.tick() => {
+                    let now = std::time::Instant::now();
+                    let due: Vec<String> = unmute_at.iter().filter(|(_, t)| **t <= now).map(|(c, _)| c.clone()).collect();
+                    for chan in due {
+                        unmute_at.remove(&chan);
+                        info!("Raid-mute verlopen voor {}: -m", chan);
+                        writer.write_all(format!("MODE {} -m\r\n", chan).as_bytes()).await?;
+                    }
+                }
+
                 // Shutdown signaal
                 _ = self.shutdown_token.cancelled() => {
                     info!("IRC client sluit af: verzenden QUIT...");
@@ -326,5 +393,24 @@ impl IrcClient {
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tags_give_verified_account() {
+        let (acct, rest) = split_tags("@time=2026-10-07T12:00:00.000Z;account=Boss :nick!u@h PRIVMSG #c :hoi");
+        assert_eq!(acct.as_deref(), Some("Boss"));
+        assert_eq!(rest, ":nick!u@h PRIVMSG #c :hoi");
+        assert_eq!(split_tags("@account=* :n!u@h PRIVMSG #c :x").0, None);
+        assert_eq!(split_tags(":n!u@h PRIVMSG #c :x").0, None);
+    }
+
+    #[test]
+    fn privmsg_text_with_ipv6_host_and_colons() {
+        assert_eq!(privmsg_text(":nick!u@2001:db8::1 PRIVMSG #c :tijd: 12:30 ok"), Some("tijd: 12:30 ok"));
     }
 }

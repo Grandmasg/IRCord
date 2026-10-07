@@ -174,7 +174,7 @@ impl SysadminPlugin {
 
     async fn handle_ssl(
         &self,
-        ctx: &PluginContext,
+        _ctx: &PluginContext,
         cmd: &CommandEvent,
     ) -> Result<Option<String>, Box<dyn std::error::Error + Send + Sync>> {
         let domain = cmd.args.trim().trim_start_matches("https://").trim_start_matches("http://").trim_matches('/');
@@ -184,8 +184,11 @@ impl SysadminPlugin {
 
         // Perform HTTPS check
         let url = format!("https://{}", domain);
+        if !crate::utils::ssrf::is_safe_public_url(&url) {
+            return Ok(Some("⛔ [Security] Private, localhost, or internal LAN addresses cannot be probed.".into()));
+        }
         let start = Instant::now();
-        let res = ctx.http
+        let res = crate::utils::ssrf::safe_client()
             .head(&url)
             .timeout(std::time::Duration::from_secs(5))
             .send()
@@ -208,7 +211,7 @@ impl SysadminPlugin {
 
     async fn handle_http(
         &self,
-        ctx: &PluginContext,
+        _ctx: &PluginContext,
         cmd: &CommandEvent,
     ) -> Result<Option<String>, Box<dyn std::error::Error + Send + Sync>> {
         let url = cmd.args.trim();
@@ -228,7 +231,7 @@ impl SysadminPlugin {
         }
 
         let start = Instant::now();
-        let res = ctx.http
+        let res = crate::utils::ssrf::safe_client()
             .get(&full_url)
             .timeout(std::time::Duration::from_secs(6))
             .send()

@@ -36,7 +36,8 @@ use plugins::{
     url_titler::UrlTitlerPlugin, weather::WeatherPlugin, whatpulse::WhatPulsePlugin,
     wiki::WikipediaPlugin, youtube::YouTubePlugin, birthday::BirthdayPlugin,
     identity::IdentityPlugin, sysadmin::SysadminPlugin, rss::RssPlugin, tech::TechPlugin,
-    rhai::RhaiPlugin, lang::LangPlugin, rephrase::RephrasePlugin, countdown::CountdownPlugin,
+    rhai::RhaiPlugin, lang::LangPlugin, rephrase::RephrasePlugin, countdown::CountdownPlugin, vakantie::VakantiePlugin,
+    stats::StatsPlugin, track::TrackPlugin,
     help::HelpPlugin, profile::ProfilePlugin, channel_ops::ChannelOpsPlugin, games::GamesPlugin,
     MessageEvent, PluginContext, PluginManager,
 };
@@ -89,6 +90,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         }
     };
 
+    crate::plugins::admin::AdminPlugin::init_start_time();
+    if cfg.general.bot_owner_irc_account.trim().is_empty() {
+        warn!(
+            "bot_owner_irc_account is niet ingesteld: eigenaar-rechten op IRC worden alleen op nick '{}' gebaseerd en kunnen door nick-overname worden misbruikt. Stel bot_owner_irc_account in.",
+            cfg.general.bot_owner_irc_nick
+        );
+    }
     info!("Geconfigureerde bridge-kanalen: {} mappings actief", cfg.channels.len());
     for m in &cfg.channels {
         info!("  [Bridge] IRC: {} <===> Discord Channel: {}", m.irc_channel, m.discord_channel_id);
@@ -221,6 +229,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     plugin_mgr.register(Box::new(RhaiPlugin::new()));
     plugin_mgr.register(Box::new(RephrasePlugin::new()));
     plugin_mgr.register(Box::new(CountdownPlugin::new()));
+    plugin_mgr.register(Box::new(VakantiePlugin::new()));
+    plugin_mgr.register(Box::new(StatsPlugin));
+    plugin_mgr.register(Box::new(TrackPlugin));
 
     info!("Plugin Manager geïnitialiseerd met {} actieve plugins", plugin_mgr.plugin_count());
     let plugin_mgr = Arc::new(plugin_mgr);
@@ -247,11 +258,36 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let web_cfg = cfg_arc.clone();
     let web_error_logger = error_logger.clone();
     let web_shutdown = shutdown_token.clone();
+    let (announce_tx, mut announce_rx) = mpsc::channel::<String>(64);
+    let web_plugin_count = plugin_mgr.plugin_count();
     tokio::spawn(async move {
-        if let Err(err) = WebServer::start(web_cfg, web_error_logger, web_shutdown).await {
+        if let Err(err) = WebServer::start(web_cfg, web_error_logger, web_plugin_count, announce_tx, web_shutdown).await {
             error!("Fout bij draaien van Axum Web Server: {:?}", err);
         }
     });
+
+    // Meldingen van de webserver (bijv. GitHub events) naar alle gekoppelde IRC- en Discord-kanalen
+    {
+        let channels = cfg_arc.channels.clone();
+        let irc_tx = outbound_irc_tx.clone();
+        let dispatcher = webhook_dispatcher.clone();
+        tokio::spawn(async move {
+            while let Some(line) = announce_rx.recv().await {
+                for m in &channels {
+                    let _ = irc_tx.send(BridgeMessage {
+                        source_platform: Platform::Irc,
+                        source_channel: m.irc_channel.clone(),
+                        author_name: "IRCord".into(),
+                        author_id: None,
+                        content: line.clone(),
+                        reply_to: None,
+                        is_action: false,
+                    }).await;
+                    let _ = dispatcher.send_message(&m.discord_webhook_url, "GitHub", &line).await;
+                }
+            }
+        });
+    }
 
     // 10. Start IRC Client Task
     let irc_client = IrcClient::new(
@@ -312,6 +348,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let ai_client_clone = free_token_client.clone();
     let ai_manager_clone = ai_manager.clone();
     let shutdown_loop = shutdown_token.clone();
+    let paste_http = http_client.clone();
 
     tokio::spawn(async move {
         loop {
@@ -402,7 +439,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                         Platform::Discord => {
                             if let Ok(discord_chan_id) = msg.source_channel.parse::<u64>() {
                                 if let Some(mapping) = router_clone.get_irc_destination(discord_chan_id) {
-                                    let formatted = router_clone.format_for_irc(&msg);
+                                    // Lange (code)berichten: uploaden of inkorten zodat IRC niet wordt overspoeld
+                                    let mut relay_msg = msg.clone();
+                                    relay_msg.content = crate::utils::pastebin::shorten_for_irc(
+                                        &paste_http,
+                                        &msg.content,
+                                        cfg_arc.general.pastebin_threshold_lines,
+                                        cfg_arc.general.pastebin_enabled,
+                                    ).await;
+                                    let formatted = router_clone.format_for_irc(&relay_msg);
                                     if let Some(ref d_id) = msg.author_id {
                                         router_clone.record_bridge_link(
                                             d_id.clone(),
@@ -524,7 +569,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     // 13. Achtergrondtaak: Periodieke RSS Feeds Monitor (elke 10 minuten)
     let rss_pool = pool.clone();
-    let rss_http = http_client.clone();
     let rss_irc_tx = outbound_irc_tx.clone();
     let rss_router = bridge_router.clone();
     let rss_dispatcher = webhook_dispatcher.clone();
@@ -542,7 +586,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                     break;
                 }
                 _ = interval.tick() => {
-                    let articles = RssPlugin::poll_new_articles(&rss_pool, &rss_http).await;
+                    let articles = RssPlugin::poll_new_articles(&rss_pool).await;
                     for (channel, message) in articles {
                         info!("📰 Nieuw RSS-artikel versturen naar kanaal {}", channel);
 

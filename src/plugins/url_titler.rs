@@ -14,76 +14,7 @@ impl UrlTitlerPlugin {
     /// Blokkeert loopback (127.0.0.1, localhost), private LAN adressen (10.x, 192.168.x, 172.16-31.x),
     /// cloud metadata (169.254.x) en gevaarlijke interne poorten.
     pub fn is_safe_public_url(url_str: &str) -> bool {
-        let Ok(parsed) = reqwest::Url::parse(url_str) else {
-            return false;
-        };
-
-        if parsed.scheme() != "http" && parsed.scheme() != "https" {
-            return false;
-        }
-
-        let Some(host_str) = parsed.host_str() else {
-            return false;
-        };
-
-        let host_lower = host_str.to_lowercase();
-        if host_lower == "localhost"
-            || host_lower.ends_with(".localhost")
-            || host_lower.ends_with(".local")
-            || host_lower.ends_with(".internal")
-            || host_lower.ends_with(".lan")
-            || host_lower.ends_with(".home.arpa")
-        {
-            return false;
-        }
-
-        if let Ok(ip) = host_lower.parse::<std::net::IpAddr>() {
-            match ip {
-                std::net::IpAddr::V4(ipv4) => {
-                    let octets = ipv4.octets();
-                    // Loopback (127.0.0.0/8) & Unspecified (0.0.0.0/8)
-                    if octets[0] == 127 || octets[0] == 0 {
-                        return false;
-                    }
-                    // Private netwerken (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16)
-                    if octets[0] == 10 {
-                        return false;
-                    }
-                    if octets[0] == 172 && (16..=31).contains(&octets[1]) {
-                        return false;
-                    }
-                    if octets[0] == 192 && octets[1] == 168 {
-                        return false;
-                    }
-                    // Link-local / Cloud metadata (169.254.0.0/16)
-                    if octets[0] == 169 && octets[1] == 254 {
-                        return false;
-                    }
-                    if ipv4.is_broadcast() {
-                        return false;
-                    }
-                }
-                std::net::IpAddr::V6(ipv6) => {
-                    if ipv6.is_loopback() || ipv6.is_unspecified() {
-                        return false;
-                    }
-                    let segs = ipv6.segments();
-                    // Unique local fc00::/7 & Link-local fe80::/10
-                    if (segs[0] & 0xfe00) == 0xfc00 || (segs[0] & 0xffc0) == 0xfe80 {
-                        return false;
-                    }
-                }
-            }
-        }
-
-        // Toegestane poorten (voorkomt probing van SSH, Ollama 11434, Bot Web 9090, etc.)
-        if let Some(port) = parsed.port() {
-            if port != 80 && port != 443 && port != 8080 && port != 8443 {
-                return false;
-            }
-        }
-
-        true
+        crate::utils::ssrf::is_safe_public_url(url_str)
     }
 }
 
@@ -110,9 +41,8 @@ impl Plugin for UrlTitlerPlugin {
                 return Ok(None);
             }
 
-            let resp = match ctx.http.get(url)
+            let resp = match crate::utils::ssrf::safe_client().get(url)
                 .timeout(Duration::from_secs(4))
-                .header("User-Agent", "Mozilla/5.0 (compatible; IRCordBot/1.0)")
                 .send()
                 .await
             {
@@ -127,7 +57,7 @@ impl Plugin for UrlTitlerPlugin {
                 }
             }
 
-            let body = resp.text().await.unwrap_or_default();
+            let body = String::from_utf8_lossy(&crate::utils::ssrf::read_limited(resp, 512 * 1024).await).into_owned();
             let document = Html::parse_document(&body);
             let title_selector = Selector::parse("title").unwrap();
 

@@ -32,6 +32,9 @@ pub mod rhai;
 pub mod lang;
 pub mod rephrase;
 pub mod countdown;
+pub mod vakantie;
+pub mod stats;
+pub mod track;
 pub mod help;
 pub mod profile;
 pub mod channel_ops;
@@ -163,10 +166,9 @@ impl PluginManager {
             let canonical_trigger = self.ctx.locale.resolve_alias(&raw_trigger).to_string();
             let args = parts.next().unwrap_or("").to_string();
 
-            let is_owner = msg.author.eq_ignore_ascii_case(&self.ctx.config.general.bot_owner_irc_nick)
-                || (msg.platform == "discord"
-                    && self.ctx.config.general.bot_owner_discord_id != 0
-                    && msg.author_id.as_deref() == Some(&self.ctx.config.general.bot_owner_discord_id.to_string()));
+            let general = &self.ctx.config.general;
+            let is_owner = general.is_owner(&msg.platform, &msg.author, msg.author_id.as_deref());
+            let is_operator = general.is_operator(&msg.platform, &msg.author, msg.author_id.as_deref());
 
             let cmd = CommandEvent {
                 platform: msg.platform.clone(),
@@ -174,7 +176,7 @@ impl PluginManager {
                 author: msg.author.clone(),
                 trigger: canonical_trigger.clone(),
                 args,
-                is_operator: is_owner, // vereenvoudigde initiële check
+                is_operator,
                 is_owner,
             };
 
@@ -218,27 +220,37 @@ impl PluginManager {
             return responses;
         }
 
-        // 2. Reguliere chat-pass-through voor passieve plugins
-        for p in &self.plugins {
+        // 2. Reguliere chat-pass-through voor passieve plugins.
+        // De plugins draaien gelijktijdig (een trage AI-aanroep houdt de rest niet op), elk met panic-isolatie
+        // en een harde time-out. De volgorde van de antwoorden blijft de registratievolgorde.
+        const PASSIVE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+        let futures = self.plugins.iter().map(|p| {
             let ctx = self.ctx.clone();
             let msg_clone = msg.clone();
             let plugin_name = p.name();
+            async move {
+                let guarded = futures_util::FutureExt::catch_unwind(AssertUnwindSafe(p.on_message(&ctx, &msg_clone)));
+                (plugin_name, tokio::time::timeout(PASSIVE_TIMEOUT, guarded).await)
+            }
+        });
 
-            let result = futures_util::FutureExt::catch_unwind(AssertUnwindSafe(
-                p.on_message(&ctx, &msg_clone)
-            )).await;
-
-            match result {
-                Ok(Ok(Some(reply))) => responses.push(reply),
-                Ok(Err(err)) => {
+        for (plugin_name, outcome) in futures_util::future::join_all(futures).await {
+            match outcome {
+                Ok(Ok(Ok(Some(reply)))) => responses.push(reply),
+                Ok(Ok(Err(err))) => {
                     let err_msg = format!("Fout in plugin [{}] bij berichtverwerking: {}", plugin_name, err);
                     warn!("{}", err_msg);
                     self.ctx.error_logger.record("WARN", plugin_name, &err_msg);
                 }
-                Err(_) => {
+                Ok(Err(_)) => {
                     let panic_msg = format!("PANIC onderschept in plugin [{}] bij berichtverwerking!", plugin_name);
                     error!("{}", panic_msg);
                     self.ctx.error_logger.record("PANIC", plugin_name, &panic_msg);
+                }
+                Err(_) => {
+                    let msg = format!("Plugin [{}] overschreed de time-out van 30s bij berichtverwerking", plugin_name);
+                    warn!("{}", msg);
+                    self.ctx.error_logger.record("WARN", plugin_name, &msg);
                 }
                 _ => {}
             }
