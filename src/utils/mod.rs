@@ -7,3 +7,4 @@ pub mod langdetect;
 pub mod ssrf;
 pub mod pastebin;
 pub mod ratelimit;
+pub mod calc;

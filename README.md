@@ -52,6 +52,9 @@ Drawing inspiration from classic bots such as [CloudBot](https://github.com/Tota
    - Bidirectional LRU deduplication cache to eliminate relay loops.
    - Edit and delete sync (`sync_edits`): edited Discord messages are announced on IRC (`✏️ <nick> (bewerkt): …`), deleted ones as `🗑️ nick heeft een bericht verwijderd` (the deleted text is never repeated).
    - IRC presence (`sync_presence`): join, part and quit are posted to Discord (rate-limited against netsplit floods). Discord-to-IRC presence is not possible without privileged gateway intents and is not implemented.
+   - Mentions: Discord `<@id>`, `<#channel>` and `<@&role>` become readable names on IRC; on the way back, `@nick` / `nick:` for linked accounts (`!link`) becomes a real Discord mention. Everything else is neutralised: `@everyone`, `@here` and role pings sent from IRC never ping on Discord (`allowed_mentions`).
+   - Replies and reactions: `Bob: …` from IRC gets a quote of Bob's last message on Discord (webhooks cannot reply natively); Discord reactions on bridged messages are announced on IRC (`sync_reactions`); stickers and embed titles are shown as `[sticker: …]` / `[embed: …]`.
+   - Optional topic sync (`sync_topic`, default off): an IRC `TOPIC` change updates the Discord channel topic and vice versa. Needs the *Manage Channels* permission for the bot; a guard prevents loops.
    - `!img <url>` and `!upload <url>` send an image embed or a file (max. 8 MB, no executables) from IRC to the linked Discord channel.
 
 2. **Multi-Channel & Multi-Server Matrix**
@@ -73,7 +76,7 @@ Drawing inspiration from classic bots such as [CloudBot](https://github.com/Tota
    - Profile nickname linking (`!wp link <username>`).
 
 6. **Security & Channel Moderation**
-   - IRCv3 SASL authentication (secure authentication before joining `+r` channels).
+   - IRCv3 SASL authentication (secure authentication before joining `+r` channels). TLS is supported (`IRC_USE_TLS`, default on for port 6697; `IRC_TLS_VERIFY=false` for self-signed servers). A warning is logged when a SASL password would be sent without TLS.
    - Flood guard with configurable delays and line byte limits.
    - Anti-raid: when `raid_threshold_joins_per_sec` users join a channel within one second, the bot sets it `+m` for `raid_mute_duration_sec` seconds (requires channel operator status).
    - Verified owner/operator identity: set `bot_owner_irc_account` and the bot requires the server-confirmed account (IRCv3 `account-tag`), so taking over the owner's nick gives no rights. Extra operators via `operator_irc_accounts` / `operator_discord_ids`.
@@ -203,6 +206,8 @@ All commands accept either an exclamation mark (`!`) or a period (`.`) by defaul
 | **Sed (Passive)** | `s/old/new/[gi N]` | Sed-style correction: searches the last 50 channel messages for your latest one that matches. Real regex (`\1`, `&`), flags `g`/`i`/`N`, other delimiters (`s#a#b#`), and `nick: s/old/new/` to correct someone else. Output: `✏️ Alice meant: …` | `s/teh/the/`, `PjoT: s/mij/ik/` |
 | **Holidays** | `!vakantie [region]`, `!vakanties [year] [region]` | Dutch school holidays from the official Rijksoverheid open data API (free, keyless). Fetched at most once a year and cached in `data/`. | `!vakantie noord`, `!vakanties 2027` |
 | **Plugins** | `!plugin list`, `!plugin disable <name>`, `!plugin enable <name>` | Per-channel plugin switch (operators). Stored in the database and shared with the bridged channel; static defaults via `disabled_plugins` per `[[channels]]` entry. `help`, `plugins` and `admin` cannot be disabled. | `!plugin disable urban` |
+| **Calc** | `!calc <expression>`, `!bereken` | Safe calculator (own parser, no eval): `+ - * / % ^`, parentheses, `pi`, `e`, `sqrt`, `sin`, `cos`, `tan`, `ln`, `log`, `abs`, `round`, `floor`, `ceil`, `deg`, `rad`. | `!calc (12+3)*4`, `!calc sqrt(2)*pi` |
+| **Backup** | `!backup`, `!export [n]` | Owner only: a consistent copy of the database (`VACUUM INTO`, oldest pruned after `backup_keep`) and a text export of the last *n* messages of this channel to `data/exports/`. A daily automatic backup runs when `backup_enabled = true`. | `!backup`, `!export 500` |
 | **Media** | `!img <url>`, `!upload <url>` | IRC → Discord: shows an image embed, or uploads a file (max. 8 MB; executables and HTML are refused). | `!img https://example.com/cat.png` |
 | **Track** | `!track <word>`, `!track list`, `!untrack <word>` | Private-message alert when a new RSS article contains your keyword (max. 10 per user, IRC only). | `!track rust` |
 | **Stats** | `!peak` | Busiest day in the channel (most unique chatters / most messages), derived from the chat log. | `!peak` |
@@ -287,6 +292,9 @@ http_port = 9090
 http_bind = "0.0.0.0" # "127.0.0.1" behind a reverse proxy
 pastebin_threshold_lines = 4
 pastebin_enabled = false # true = upload long Discord messages to dpaste.org (third party!)
+backup_enabled = true # daily SQLite backup
+backup_keep = 7
+backup_dir = "data/backups"
 admin_channel_irc = "#bot-logs"
 admin_channel_discord_id = 0 # Optional: Discord channel ID for #bot-logs
 
@@ -295,6 +303,8 @@ loop_prevent_timeout_sec = 10
 lru_cache_capacity = 2000
 sync_presence = true
 sync_edits = true
+sync_reactions = true
+sync_topic = false # IRC topic <-> Discord channel topic (needs Manage Channels)
 
 [[channels]]
 irc_channel = "#general"

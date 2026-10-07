@@ -32,6 +32,11 @@ pastebin_threshold_lines = 4
 # PRIVACY: the text is sent to a third-party service (free, no key). Default off = messages are truncated.
 pastebin_enabled = false
 
+# Daily SQLite backup (VACUUM INTO) to backup_dir; the oldest are deleted after backup_keep files
+backup_enabled = true
+backup_keep = 7
+backup_dir = "data/backups"
+
 # Admin logging channels
 admin_channel_irc = "#bot-logs"
 admin_channel_discord_id = 0 # Optional: Discord channel ID for #bot-logs
@@ -48,6 +53,12 @@ sync_presence = true
 
 # Synchronize Discord message edits and deletions to IRC
 sync_edits = true
+
+# Announce Discord reactions on bridged messages on IRC
+sync_reactions = true
+
+# Sync IRC topic <-> Discord channel topic (the bot needs the Manage Channels permission)
+sync_topic = false
 
 # Multi-channel matrix mappings
 # Define one [[channels]] block for each bridged pair of IRC channel and Discord channel

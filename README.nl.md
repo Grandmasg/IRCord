@@ -51,6 +51,9 @@ Geïnspireerd door klassieke bots zoals [CloudBot](https://github.com/TotallyNot
    - LRU Deduplicatie Cache om oneindige relay-loops waterdicht te blokkeren.
    - Bewerk- en verwijder-sync (`sync_edits`): bewerkte Discord-berichten worden op IRC gemeld (`✏️ <nick> (bewerkt): …`), verwijderde als `🗑️ nick heeft een bericht verwijderd` (de verwijderde tekst wordt nooit herhaald).
    - IRC-aanwezigheid (`sync_presence`): join, part en quit gaan naar Discord (met limiet tegen netsplit-floods). Aanwezigheid van Discord naar IRC kan niet zonder bevoorrechte gateway-intents en is niet geïmplementeerd.
+   - Mentions: Discord `<@id>`, `<#kanaal>` en `<@&rol>` worden op IRC leesbare namen; terug wordt `@nick` / `nick:` van gekoppelde accounts (`!link`) een echte Discord-mention. Al het andere is onschadelijk gemaakt: `@everyone`, `@here` en rol-pings vanaf IRC pingen nooit op Discord (`allowed_mentions`).
+   - Replies en reacties: `Bob: …` vanaf IRC krijgt op Discord een citaat van Bobs laatste bericht (webhooks kunnen niet echt antwoorden); Discord-reacties op gebrugde berichten worden op IRC gemeld (`sync_reactions`); stickers en embed-titels verschijnen als `[sticker: …]` / `[embed: …]`.
+   - Optionele topic-sync (`sync_topic`, standaard uit): een IRC-`TOPIC`-wijziging past het Discord-kanaalonderwerp aan en andersom. De bot heeft dan *Kanalen beheren* nodig; een bewaker voorkomt lussen.
    - `!img <url>` en `!upload <url>` sturen een afbeelding-embed of bestand (max. 8 MB, geen uitvoerbare bestanden) van IRC naar het gekoppelde Discord-kanaal.
 
 2. **Multi-Channel & Multi-Server Matrix**
@@ -72,7 +75,7 @@ Geïnspireerd door klassieke bots zoals [CloudBot](https://github.com/TotallyNot
    - Gebruikers kunnen hun IRC/Discord-nick koppelen aan hun WhatPulse profiel.
 
 6. **Beveiliging & Moderatie**
-   - IRCv3 SASL authenticatie (veilig inloggen vóór kanaaljoin, vereist voor `+r` kanalen).
+   - IRCv3 SASL authenticatie (veilig inloggen vóór kanaaljoin, vereist voor `+r` kanalen). TLS wordt ondersteund (`IRC_USE_TLS`, standaard aan voor poort 6697; `IRC_TLS_VERIFY=false` voor servers met een zelfondertekend certificaat). Er komt een waarschuwing in de log als een SASL-wachtwoord zonder TLS zou worden verstuurd.
    - Ingebouwde flood guard met instelbare delays en byte limits.
    - Rollenmodel: eigenaar > operator > moderator > gebruiker. Moderators (`moderator_irc_accounts` / `moderator_discord_ids`) mogen `!kick`, `!ban`, `!kb`, `!voice`, `!devoice`, `!topic`; `!op`/`!deop` en pluginbeheer vragen een operator.
    - Limiet per gebruiker op dure commando's (`!ai`, `!tr`, `!http`, `!dns`, `!yt`, `!g`, …): `expensive_commands_per_minute` (standaard 6, 0 = uit); operators zijn vrijgesteld.
@@ -202,6 +205,8 @@ Alle commando's werken standaard met zowel een uitroepteken (`!`) als een punt (
 | **Sed (Passief)** | `s/oud/nieuw/[gi N]` | Sed-correctie: zoekt in de laatste 50 kanaalberichten naar jouw meest recente bericht dat past. Echte regex (`\1`, `&`), vlaggen `g`/`i`/`N`, andere delimiters (`s#a#b#`) en `nick: s/oud/nieuw/` om iemand anders te corrigeren. Uitvoer: `✏️ Alice bedoelde: …` | `s/fout/goed/`, `PjoT: s/mij/ik/` |
 | **Vakanties** | `!vakantie [regio]`, `!vakanties [jaar] [regio]` | Nederlandse schoolvakanties via de officiële open data API van Rijksoverheid (gratis, geen sleutel). Hooguit één keer per jaar opgehaald en gecachet in `data/`. | `!vakantie noord`, `!vakanties 2027` |
 | **Plugins** | `!plugin list`, `!plugin disable <naam>`, `!plugin enable <naam>` | Plugins per kanaal aan/uit zetten (operators). Wordt in de database bewaard en geldt ook voor het gekoppelde kanaal; vaste standaardwaarden via `disabled_plugins` per `[[channels]]`. `help`, `plugins` en `admin` kunnen niet uit. | `!plugin disable urban` |
+| **Calc** | `!calc <som>`, `!bereken` | Veilige rekenmachine (eigen parser, geen eval): `+ - * / % ^`, haakjes, `pi`, `e`, `sqrt`, `sin`, `cos`, `tan`, `ln`, `log`, `abs`, `round`, `floor`, `ceil`, `deg`, `rad`. | `!calc (12+3)*4`, `!calc sqrt(2)*pi` |
+| **Back-up** | `!backup`, `!export [n]` | Alleen eigenaar: een consistente kopie van de database (`VACUUM INTO`, oudste worden na `backup_keep` verwijderd) en een tekstexport van de laatste *n* berichten van dit kanaal naar `data/exports/`. Met `backup_enabled = true` draait er dagelijks een automatische back-up. | `!backup`, `!export 500` |
 | **Media** | `!img <url>`, `!upload <url>` | IRC → Discord: toont een afbeelding-embed of uploadt een bestand (max. 8 MB; uitvoerbare bestanden en HTML worden geweigerd). | `!img https://example.com/kat.png` |
 | **Track** | `!track <woord>`, `!track list`, `!untrack <woord>` | Privébericht zodra een nieuw RSS-artikel jouw trefwoord bevat (max. 10 per gebruiker, alleen IRC). | `!track rust` |
 | **Stats** | `!peak` | Drukste dag in het kanaal (meeste unieke chatters / meeste berichten), afgeleid uit het chatlogboek. | `!peak` |
@@ -305,6 +310,9 @@ http_port = 9090
 http_bind = "0.0.0.0" # "127.0.0.1" achter een reverse proxy
 pastebin_threshold_lines = 4
 pastebin_enabled = false # true = lange Discord-berichten uploaden naar dpaste.org (externe partij!)
+backup_enabled = true # dagelijkse SQLite-back-up
+backup_keep = 7
+backup_dir = "data/backups"
 admin_channel_irc = "#bot-logs"
 admin_channel_discord_id = 0 # Optioneel: Discord kanaal-ID voor #bot-logs
 
