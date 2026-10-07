@@ -9,11 +9,25 @@ command_prefixes = ["!", "."]
 bot_owner_discord_id = 0
 bot_owner_irc_nick = "JouwNick"
 
+# Geverifieerde identiteit (BELANGRIJK): een kale nick kan door iedereen worden overgenomen. Vul het NickServ/SASL-account
+# van de eigenaar in; de bot eist dan het door de server bevestigde account (IRCv3 account-tag) in plaats van alleen de nick.
+bot_owner_irc_account = ""
+# Extra operators naast de eigenaar (bevestigde IRC-accounts en Discord-gebruikers-ID's)
+operator_irc_accounts = []
+operator_discord_ids = []
+
+# Adres waaraan de HTTP-server zich bindt (gebruik "127.0.0.1" achter een reverse proxy)
+http_bind = "0.0.0.0"
+
 # Web dashboard / health-check HTTP-poort
 http_port = 9090
 
 # Pastebin drempel: antwoorden met meer regels dan dit worden via pastebin of in delen verstuurd
 pastebin_threshold_lines = 4
+
+# Lange Discord-berichten (> pastebin_threshold_lines) uploaden naar dpaste.org in plaats van inkorten voor IRC.
+# PRIVACY: de tekst gaat naar een externe dienst (gratis, geen sleutel). Standaard uit = berichten worden ingekort.
+pastebin_enabled = false
 
 # Beheerders logkanalen
 admin_channel_irc = "#bot-logs"

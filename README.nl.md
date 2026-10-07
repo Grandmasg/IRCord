@@ -55,7 +55,7 @@ Geïnspireerd door klassieke bots zoals [CloudBot](https://github.com/TotallyNot
    - Dynamische configuratie-validatie (`config.toml`).
 
 3. **Modulair Plugin Systeem**
-   - 25 ingebouwde native plugins voor community, moderatie, statistieken, media, gaming en AI.
+   - 40+ ingebouwde native plugins voor community, moderatie, statistieken, media, gaming en AI.
    - Ondersteuning voor dynamische **[Rhai](https://rhai.rs/) scripts** in `./scripts/` voor live commando's zonder hercompileren.
 
 4. **Lokale Edge-AI & Vision**
@@ -71,15 +71,19 @@ Geïnspireerd door klassieke bots zoals [CloudBot](https://github.com/TotallyNot
 6. **Beveiliging & Moderatie**
    - IRCv3 SASL authenticatie (veilig inloggen vóór kanaaljoin, vereist voor `+r` kanalen).
    - Ingebouwde flood guard met instelbare delays en byte limits.
-   - Anti-raid en clone-join bescherming.
-   - Automatische codeblok-pastebin threshold (> 4 regels worden omgezet in een link).
+   - Anti-raid: als `raid_threshold_joins_per_sec` gebruikers binnen één seconde een kanaal joinen, zet de bot het `raid_mute_duration_sec` seconden op `+m` (vereist kanaaloperator-status).
+   - Geverifieerde eigenaar/operator: vul `bot_owner_irc_account` in en de bot eist het door de server bevestigde account (IRCv3 `account-tag`). Het overnemen van de nick van de eigenaar geeft dan geen rechten. Extra operators via `operator_irc_accounts` / `operator_discord_ids`.
+   - SSRF-bescherming voor elke door gebruikers opgegeven URL (`!http`, `!ssl`, `!rss`, `!tldr`, link-titels): DNS die alleen publieke adressen toestaat, controle van elke redirect en limiet op de grootte van antwoorden.
+   - Lange Discord-berichten (> `pastebin_threshold_lines`) worden voor IRC ingekort, of naar dpaste.org geüpload bij `pastebin_enabled = true` (opt-in: de tekst gaat naar een externe partij).
    - Real-time token/secret lekdetectie via de `SafetyPlugin`.
 
 7. **Observability & Webhooks**
    - Ingebouwde Axum HTTP server op poort `9090`.
    - `/health` endpoint voor Docker healthchecks.
-   - `/metrics` endpoint voor monitoring.
-   - `/api/github` webhook endpoint met HMAC SHA-256 handtekeningvalidatie.
+   - `/metrics` endpoint met echte uptime, aantal plugins, aantal fouten en (op Linux) geheugengebruik.
+   - `/api/errors` (diagnostiek) is beveiligd met `Authorization: Bearer $HTTP_API_TOKEN` en staat uit zolang het token niet is ingesteld.
+   - `/api/github` webhook met verplichte HMAC SHA-256 handtekening (staat uit zonder `GITHUB_WEBHOOK_SECRET`). Push-, pull request-, issue- en release-events worden in alle gekoppelde kanalen aangekondigd.
+   - `http_bind` bepaalt het luisteradres (gebruik `127.0.0.1` achter een reverse proxy).
 
 ---
 
@@ -96,7 +100,7 @@ Geïnspireerd door klassieke bots zoals [CloudBot](https://github.com/TotallyNot
 └────────────────┘                             │  │ discord_task │◄──────mpsc───────────┤               │
                                                │  └──────────────┘                      ▼               │
 ┌────────────────┐     HTTP Webhooks           │  ┌──────────────┐         ┌─────────────────────────┐  │
-│ GitHub / Feeds │──(HMAC Verified)───────────►│  │ axum_http_srv│──mpsc──►│  Plugin Manager (25)    │  │
+│ GitHub / Feeds │──(HMAC Verified)───────────►│  │ axum_http_srv│──mpsc──►│  Plugin Manager (40+)    │  │
 └────────────────┘                             │  └──────────────┘         └────────────┬────────────┘  │
                                                │                                        │               │
                                                │        ┌──────────────┬────────────────┼─────────────┐ │
@@ -151,9 +155,9 @@ Alle commando's werken standaard met zowel een uitroepteken (`!`) als een punt (
 | | `!eli5` | Legt een complexe stelling of zin uit alsof je 5 bent (met analogie/metafoor). | `!eli5`, `!eli5 Quantum computing` |
 | | `!zakelijk`, `!corporate` | Vormt een botte of slordige chatboodschap om tot een nette, professionele en diplomatieke tekst. | `!zakelijk Schiet nou eens op` |
 | | `!beknopt`, `!kort` | Snijdt alle ruis weg en vat een zin of betoog samen in exact 1 krachtige regel. | `!beknopt`, `!kort Lang betoog...` |
-| **Vertalen** | `!tr`, `!translate`, `!vertaal` | Vertaalt zinnen naar het Nederlands of een opgegeven doeltaal via lokale AI / MyMemory. | `!tr How is the weather?`, `!tr de Hallo` |
+| **Vertalen** | `!tr`, `!translate`, `!vertaal` | Vertaalt zinnen naar het Nederlands of een opgegeven doeltaal via DeepL (als `DEEPL_API_KEY` is ingesteld), anders lokale AI, anders MyMemory. | `!tr How is the weather?`, `!tr de Hallo` |
 | | `!chatlang` | Toon of wijzig de standaard chattaal van het actieve kanaal (`!chatlang nl`, `!chatlang en`, `!chatlang de`). | `!chatlang`, `!chatlang nl` |
-| | `!autotr` | Schakel realtime automatische chatvertaling in of uit voor het kanaal (`!autotr on`, `!autotr off`, `!autotr status`). Berichten die afwijken van de standaardtaal worden automatisch vertaald! *(Idee van ®Cjefke 2026)* | `!autotr on`, `!autotr off` |
+| | `!autotr` | Schakel realtime automatische chatvertaling in of uit voor het kanaal (`!autotr on`, `!autotr off`, `!autotr status`). De taal wordt offline herkend met een n-gram detector (`lingua`: NL/EN/DE/FR/ES/IT/PT); er wordt alleen vertaald als de detector zeker weet dat het bericht niet in de kanaaltaal is. Met DeepL wordt ook de brontaal van DeepL gebruikt. Korte berichten, nicks, releasecodes en bijna-identieke "vertalingen" worden genegeerd. *(Idee van ®Cjefke 2026)* | `!autotr on`, `!autotr off` |
 | **Taalvoorkeur** | `!taal`, `!lang`, `!setlang` | Persoonlijke taalvoorkeur instellen of bekijken (`!lang nl`, `!lang en`, `!lang de`, `!lang reset`). Alle botantwoorden en AI-prompts passen zich direct voor jou aan. | `!taal nl`, `!lang en`, `!taal` |
 | **Presence** | `!seen`, `!lastonline` | Toont wanneer een gebruiker voor het laatst actief was en wat diens laatste actie was. | `!seen Klaas` |
 | | `!online` | Toont een overzicht van actieve gebruikers op IRC en Discord. | `!online` |
@@ -179,17 +183,21 @@ Alle commando's werken standaard met zowel een uitroepteken (`!`) als een punt (
 | **Minecraft Status**| `!mc`, `!minecraft` | Pingt een Minecraft Java server voor online status, actuele spelers en MOTD. | `!mc play.hypixel.net` |
 | **Wereldtijd** | `!tijd`, `!time`, `!klok` | Toont de actuele lokale tijd en datum in een wereldstad of land. | `!tijd Tokyo`, `!tijd New York` |
 | **Verjaardagen** | `!bday`, `!verjaardag`, `!jarig` | Registreer verjaardagen (`!bday set DD-MM[-JJJJ]`) en bekijk naderende verjaardagen (`!bday next` of `!jarig`). De bot feliciteert jarigen automatisch 's ochtends met leeftijd en feestelijke felicitatie! | `!bday set 24-09`, `!jarig next`, `!jarig Klaas` |
-| **Admin & Logs** | `!status`, `!ping`, `!stats` | Geeft uptime, actieve plugins, database- en geheugenstatistieken weer. | `!status` |
+| **Admin & Logs** | `!status`, `!ping`, `!stats`, `!uptime` | Geeft uptime, actieve plugins, database- en geheugenstatistieken weer. | `!status`, `!uptime` |
+| | `!setmodel <naam>` | Alleen voor operators: snelkoppeling voor `!ai model <naam>`. | `!setmodel qwen2.5-coder` |
 | | `!errors`, `!errorlog` | Toont de laatste waarschuwingen, plugin-fouten of panics (operators/owner). Gebruik `!errors clear` om te legen. | `!errors 5` |
 | **Identiteit & Bridge**| `!link`, `!whois` | Koppel IRC nick en Discord account met 6-cijferige OTP code. Bekijk profiel, gekoppelde identiteit, karma en verjaardag. | `!link @Klaas`, `!link verify 123456`, `!whois Klaas` |
 | | `!bridge stats`, `!top` | Toont totale bridge statistieken (aantal berichten, verdeling IRC vs Discord) en top-chatters. | `!bridge stats` |
 | **Sysadmin & NAS** | `!nas`, `!hw`, `!sysinfo` | Telemetrie van de Minisforum N5 Pro NAS: OS, CPU load, RAM-geheugen en status van de Radeon 890M GPU. | `!nas` |
 | | `!dns <domein> [type]` | Snelle DNS resolve via trustless DNS-over-HTTPS (DoH). Ondersteunt A, AAAA, MX, TXT, CNAME. | `!dns tweakers.net A` |
 | | `!ssl <domein>`, `!http <url>`| Controleert HTTPS/TLS handshake en HSTS, of meet HTTP responstijd en statuscode (met SSRF-beveiliging). | `!ssl tweakers.net`, `!http https://site.nl` |
-| **RSS Feeds** | `!rss add/list/del/latest`| Beheer RSS/Atom nieuwsfeeds. De achtergrondtaak pollt automatisch elke 10 minuten en plaatst nieuws direct in de chat. | `!rss add https://tweakers.net/feeds/nieuws.xml #algemeen` |
+| **RSS Feeds** | `!rss add/list/del/latest`| Beheer RSS/Atom nieuwsfeeds (toevoegen/verwijderen: alleen operators). De achtergrondtaak pollt elke 10 minuten en meldt tot 3 nieuwe artikelen per feed; `!track`-trefwoorden geven een privé-melding. | `!rss add https://tweakers.net/feeds/nieuws.xml #algemeen` |
 | **Tech & GitHub** | `!gh`, `!github <repo>` | Haalt sterren, open issues, omschrijving en actuele release op via de officiële GitHub REST API. | `!gh rust-lang/rust` |
 | | `!cve`, `!security <id>` | Zoekt kwetsbaarheden en CVSS-beveiligingsscores op via de officiële OSV.dev / NIST database. | `!cve CVE-2024-3094` |
-| **Sed (Passief)** | `s/oud/nieuw/` | Corrigeert automatisch typefouten uit je vorige bericht. | `s/fout/goed/` |
+| **Sed (Passief)** | `s/oud/nieuw/[gi N]` | Sed-correctie: zoekt in de laatste 50 kanaalberichten naar jouw meest recente bericht dat past. Echte regex (`\1`, `&`), vlaggen `g`/`i`/`N`, andere delimiters (`s#a#b#`) en `nick: s/oud/nieuw/` om iemand anders te corrigeren. Uitvoer: `✏️ Alice bedoelde: …` | `s/fout/goed/`, `PjoT: s/mij/ik/` |
+| **Vakanties** | `!vakantie [regio]`, `!vakanties [jaar] [regio]` | Nederlandse schoolvakanties via de officiële open data API van Rijksoverheid (gratis, geen sleutel). Hooguit één keer per jaar opgehaald en gecachet in `data/`. | `!vakantie noord`, `!vakanties 2027` |
+| **Track** | `!track <woord>`, `!track list`, `!untrack <woord>` | Privébericht zodra een nieuw RSS-artikel jouw trefwoord bevat (max. 10 per gebruiker, alleen IRC). | `!track rust` |
+| **Stats** | `!peak` | Drukste dag in het kanaal (meeste unieke chatters / meeste berichten), afgeleid uit het chatlogboek. | `!peak` |
 | **URL Titler (Passief)** | *Automatisch* | Detecteert URL's in chat en toont direct de `<title>` van de pagina. | `https://github.com/...` |
 | **Safety (Passief)** | *Automatisch* | Waarschuwt direct wanneer iemand per ongeluk API keys of tokens lekt. | — |
 | **Reactions (Passief)**| *Automatisch* | Reageert op specifieke trefwoorden en begroetingen. | — |
@@ -281,8 +289,13 @@ language = "nl" # Keuze: "nl", "en", "de", "fr", "es"
 command_prefixes = ["!", "."] # Herkende commando-prefixen in de chat (bijv. !weer, .weather)
 bot_owner_discord_id = 0
 bot_owner_irc_nick = "JouwNick"
+bot_owner_irc_account = "" # NickServ/SASL-account; indien ingesteld wordt de eigenaar herkend aan het bevestigde account, niet aan de nick
+operator_irc_accounts = []
+operator_discord_ids = []
 http_port = 9090
+http_bind = "0.0.0.0" # "127.0.0.1" achter een reverse proxy
 pastebin_threshold_lines = 4
+pastebin_enabled = false # true = lange Discord-berichten uploaden naar dpaste.org (externe partij!)
 admin_channel_irc = "#bot-logs"
 admin_channel_discord_id = 0 # Optioneel: Discord kanaal-ID voor #bot-logs
 
@@ -320,6 +333,8 @@ raid_threshold_joins_per_sec = 5
 raid_mute_duration_sec = 60
 ```
 
+> **Gereserveerde instellingen (nog niet actief):** `loop_prevent_timeout_sec`, `sync_presence`, `sync_edits`, `sliding_window_size` worden door de config gelezen, maar er is nog geen functie die ze gebruikt. Presence-sync, edit-sync en bestand-/afbeeldingsbridging (`!upload`, `!img`) uit de designspecificatie staan nog op de roadmap.
+
 ---
 
 ## 📂 Projectstructuur
@@ -337,7 +352,7 @@ IRCord/
 │   ├── config.rs              # TOML configuratie parser & validatie
 │   ├── discord/               # Serenity Gateway handler & Webhook dispatcher
 │   ├── irc/                   # IRC client taak, SASL handling & flood guard
-│   ├── plugins/               # 25 modulaire plugins (WhatPulse, AI, Moderatie, etc.)
+│   ├── plugins/               # 40+ modulaire plugins (WhatPulse, AI, Moderatie, etc.)
 │   ├── utils/                 # Lifecycle, graceful shutdown & helpers
 │   ├── web/                   # Axum HTTP server (/health, /metrics, GitHub webhooks)
 │   └── main.rs                # Daemon opstartprocedure & event loops

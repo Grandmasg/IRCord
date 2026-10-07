@@ -29,8 +29,7 @@ RUN mkdir -p src && \
 COPY . .
 
 # Compileer geoptimaliseerde release binary met compile-time SQLite schema validatie
-RUN sqlite3 /tmp/ircord.db < migrations/20260908_init.sql && \
-    sqlite3 /tmp/ircord.db < migrations/20260925_user_preferences.sql
+RUN for f in migrations/*.sql; do sqlite3 /tmp/ircord.db < "$f"; done
 ENV DATABASE_URL="sqlite:///tmp/ircord.db"
 ENV SQLX_OFFLINE=false
 RUN touch src/main.rs && cargo build --release

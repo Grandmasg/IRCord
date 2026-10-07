@@ -3,7 +3,7 @@ use async_trait::async_trait;
 use serde::Deserialize;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
-use tracing::{debug, error};
+use tracing::debug;
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct WpTeamStats {
@@ -378,7 +378,7 @@ impl WhatPulsePlugin {
         for (idx, ch) in s.chars().enumerate() {
             out.push(ch);
             let rem = len - 1 - idx;
-            if rem > 0 && rem % 3 == 0 {
+            if rem > 0 && rem.is_multiple_of(3) {
                 out.push('.');
             }
         }

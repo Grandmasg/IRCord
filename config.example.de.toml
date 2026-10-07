@@ -9,11 +9,25 @@ command_prefixes = ["!", "."]
 bot_owner_discord_id = 0
 bot_owner_irc_nick = "DeinNick"
 
+# Verifizierte Identität (WICHTIG): Ein reiner Nick kann von jedem übernommen werden. Trage das NickServ/SASL-Konto des
+# Besitzers ein; der Bot verlangt dann das vom Server bestätigte Konto (IRCv3 account-tag) statt nur den Nick.
+bot_owner_irc_account = ""
+# Zusätzliche Operatoren neben dem Besitzer (bestätigte IRC-Konten und Discord-Benutzer-IDs)
+operator_irc_accounts = []
+operator_discord_ids = []
+
+# Adresse, an die der HTTP-Server gebunden wird (hinter einem Reverse-Proxy "127.0.0.1" verwenden)
+http_bind = "0.0.0.0"
+
 # Web-Dashboard / Health-Check HTTP-Port
 http_port = 9090
 
 # Pastebin-Schwellenwert: Antworten mit mehr Zeilen als dieser Wert werden via Pastebin oder aufgeteilt gesendet
 pastebin_threshold_lines = 4
+
+# Lange Discord-Nachrichten (> pastebin_threshold_lines) zu dpaste.org hochladen statt für IRC zu kürzen.
+# DATENSCHUTZ: Der Text geht an einen Drittanbieter (kostenlos, ohne Schlüssel). Standard aus = Nachrichten werden gekürzt.
+pastebin_enabled = false
 
 # Administrator-Protokollkanäle
 admin_channel_irc = "#bot-logs"

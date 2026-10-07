@@ -59,14 +59,13 @@ impl Plugin for SafetyPlugin {
 
         // 2. Controle op phishing of scam links
         for word in msg.content.split_whitespace() {
-            if word.starts_with("http://") || word.starts_with("https://") {
-                if Self::is_suspicious(word) {
+            if (word.starts_with("http://") || word.starts_with("https://"))
+                && Self::is_suspicious(word) {
                     return Ok(Some(format!(
                         "⚠️ [BEVEILIGINGSWAARSCHUWING] Mogelijke phishing/scam link gedetecteerd van {}: klik niet op verdachte links!",
                         msg.author
                     )));
                 }
-            }
         }
 
         Ok(None)

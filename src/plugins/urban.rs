@@ -102,8 +102,8 @@ impl Plugin for UrbanDictionaryPlugin {
 }
 
 fn clean_text(s: &str, max_len: usize) -> String {
-    let unbracketed = s.replace('[', "").replace(']', "");
-    let single_line = unbracketed.replace("\r\n", " ").replace('\n', " ").replace('\r', " ");
+    let unbracketed = s.replace(['[', ']'], "");
+    let single_line = unbracketed.replace("\r\n", " ").replace(['\n', '\r'], " ");
     let trimmed = single_line.trim();
 
     if trimmed.chars().count() > max_len {

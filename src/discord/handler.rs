@@ -26,7 +26,7 @@ impl EventHandler for DiscordHandler {
         info!("Discord bot succesvol ingelogd als {}!", ready.user.name);
     }
 
-    async fn message(&self, ctx: Context, msg: Message) {
+    async fn message(&self, _ctx: Context, msg: Message) {
         // 1. Voorkom loops: negeer eigen berichten, bots en webhooks
         if msg.author.bot || msg.webhook_id.is_some() {
             return;

@@ -1,10 +1,9 @@
 use async_trait::async_trait;
 use rhai::{Engine, Scope, Dynamic, Array};
-use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::path::PathBuf;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::time::timeout;
-use tracing::{info, warn};
+use tracing::warn;
 
 use super::{CommandEvent, Plugin, PluginContext};
 

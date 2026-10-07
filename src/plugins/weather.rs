@@ -88,7 +88,7 @@ fn wmo_code_to_desc(code: u8, is_dutch: bool) -> (&'static str, &'static str) {
         73 => ("🌨️", if is_dutch { "Matige sneeuwval" } else { "Moderate snow" }),
         75 => ("❄️", if is_dutch { "Zware sneeuwval" } else { "Heavy snow" }),
         77 => ("❄️", if is_dutch { "Kornsneeuw" } else { "Snow grains" }),
-        80 | 81 | 82 => ("🌦️", if is_dutch { "Regenbuien" } else { "Rain showers" }),
+        80..=82 => ("🌦️", if is_dutch { "Regenbuien" } else { "Rain showers" }),
         85 | 86 => ("🌨️", if is_dutch { "Sneeuwbuien" } else { "Snow showers" }),
         95 => ("⛈️", if is_dutch { "Onweersbui" } else { "Thunderstorm" }),
         96 | 99 => ("⛈️", if is_dutch { "Onweer met hagel" } else { "Thunderstorm with hail" }),

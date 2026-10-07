@@ -10,7 +10,7 @@ impl Plugin for AliasPlugin {
     fn help(&self) -> &'static str { "!alias add !naam <tekst> | !alias del !naam | !alias list" }
 
     async fn on_command(&self, ctx: &PluginContext, cmd: &CommandEvent) -> Result<Option<String>, Box<dyn std::error::Error + Send + Sync>> {
-        let mut parts = cmd.args.trim().split_whitespace();
+        let mut parts = cmd.args.split_whitespace();
         let action = parts.next().unwrap_or("").to_lowercase();
 
         match action.as_str() {

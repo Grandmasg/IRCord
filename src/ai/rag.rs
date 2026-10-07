@@ -88,7 +88,7 @@ impl RagSearcher {
 
     /// Zoekt recente chatberichten via SQLite FTS5 die matchen met een zoekterm
     pub async fn search_history(&self, query: &str, limit: i64) -> Result<Vec<String>, sqlx::Error> {
-        let sanitized = query.replace('"', "").replace('*', "");
+        let sanitized = query.replace(['"', '*'], "");
         let fts_query = format!("\"{}\"", sanitized);
 
         debug!("FTS5 chatgeschiedenis doorzoeken naar: {}", fts_query);

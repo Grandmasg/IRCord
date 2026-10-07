@@ -1,5 +1,5 @@
 [general]
-# Default chat output language: "en" (English), "nl" (Dutch), "de" (German), "fr" (French), "es" (Spanish)
+# Default chat output language: "en" (English), "nl" (Dutch), "de" (German), "fr" (French), "es" (Spanish), "zh" (Chinese)
 language = "en"
 
 # Recognized command prefixes in chat (e.g. !help, .help, ?help, $help)
@@ -9,11 +9,25 @@ command_prefixes = ["!", "."]
 bot_owner_discord_id = 0
 bot_owner_irc_nick = "YourNick"
 
+# Verified identity (IMPORTANT): a bare nick can be taken over by anyone. Set the NickServ/SASL account of the owner;
+# the bot then requires the server-confirmed account (IRCv3 account-tag) instead of just the nick.
+bot_owner_irc_account = ""
+# Extra operators besides the owner (confirmed IRC accounts and Discord user IDs)
+operator_irc_accounts = []
+operator_discord_ids = []
+
+# Address the HTTP server binds to (use "127.0.0.1" behind a reverse proxy)
+http_bind = "0.0.0.0"
+
 # Web dashboard / health check HTTP port
 http_port = 9090
 
 # Pastebin threshold: responses longer than this number of lines are uploaded to pastebin (or sent as multiple messages)
 pastebin_threshold_lines = 4
+
+# Upload long Discord messages (> pastebin_threshold_lines) to dpaste.org instead of truncating them for IRC.
+# PRIVACY: the text is sent to a third-party service (free, no key). Default off = messages are truncated.
+pastebin_enabled = false
 
 # Admin logging channels
 admin_channel_irc = "#bot-logs"

@@ -206,7 +206,7 @@ impl Plugin for CountdownPlugin {
         }
 
         // Custom datum parseren (bijv. !countdown 2026-10-15 of !countdown 15-10)
-        let clean_arg = args.replace('/', "-").replace('.', "-");
+        let clean_arg = args.replace(['/', '.'], "-");
         let parts: Vec<&str> = clean_arg.split_whitespace().next().unwrap_or("").split('-').collect();
 
         if parts.len() >= 2 {

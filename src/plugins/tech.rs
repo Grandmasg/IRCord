@@ -188,7 +188,7 @@ impl TechPlugin {
                     .unwrap_or_else(|| "No detailed description available.".into());
 
                 let short_summary = if summary.len() > 140 {
-                    format!("{}...", &summary[..140].replace('\n', " "))
+                    format!("{}...", summary[..140].replace('\n', " "))
                 } else {
                     summary.replace('\n', " ")
                 };

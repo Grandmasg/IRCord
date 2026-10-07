@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+  # sqlx::query! controleert queries tijdens het compileren tegen dit schema
+  DATABASE_URL: sqlite:ci.db
+  SQLX_OFFLINE: "false"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Create schema for compile-time query checks
+        run: |
+          for f in migrations/*.sql; do sqlite3 ci.db < "$f"; done
+      - name: cargo check
+        run: cargo check --all-targets
+      - name: cargo test
+        run: cargo test
+      - name: cargo clippy (informational)
+        run: cargo clippy --all-targets
+        continue-on-error: true

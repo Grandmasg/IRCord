@@ -2,7 +2,7 @@ use reqwest::Client;
 use serde::Serialize;
 use std::time::Duration;
 use tokio::time::sleep;
-use tracing::{error, info, warn};
+use tracing::{error, warn};
 
 #[derive(Serialize)]
 struct WebhookPayload<'a> {

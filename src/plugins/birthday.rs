@@ -2,7 +2,7 @@ use super::{CommandEvent, Plugin, PluginContext};
 use async_trait::async_trait;
 use chrono::{Datelike, Local, NaiveDate};
 use sqlx::SqlitePool;
-use tracing::{error, info};
+use tracing::info;
 
 pub struct BirthdayPlugin;
 
@@ -34,7 +34,7 @@ impl BirthdayPlugin {
 
     /// Parseert een datumstring zoals "24-09", "24/09", "24-09-1995"
     fn parse_date(input: &str) -> Option<(u32, u32, Option<i32>)> {
-        let clean = input.replace('/', "-").replace('.', "-");
+        let clean = input.replace(['/', '.'], "-");
         let parts: Vec<&str> = clean.split('-').collect();
 
         if parts.len() < 2 {

@@ -10,7 +10,7 @@ impl Plugin for PresencePlugin {
     fn help(&self) -> &'static str { "!seen <nick> / !lastonline <nick> - Toont activiteit | !online - Toont actieve chatters" }
 
     async fn on_command(&self, ctx: &PluginContext, cmd: &CommandEvent) -> Result<Option<String>, Box<dyn std::error::Error + Send + Sync>> {
-        let target = cmd.args.trim();
+        let _target = cmd.args.trim();
 
         if cmd.trigger == "online" {
             let active_users: Vec<(String, String, Option<String>)> = sqlx::query_as(

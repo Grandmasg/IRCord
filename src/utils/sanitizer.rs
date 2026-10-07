@@ -35,7 +35,7 @@ pub fn sanitize_discord_emojis(text: &str) -> String {
 
 /// Strips newlines and carriage returns for safe transmission to IRC PRIVMSG
 pub fn sanitize_for_irc(text: &str) -> String {
-    text.replace('\r', " ").replace('\n', " ").trim().to_string()
+    text.replace(['\r', '\n'], " ").trim().to_string()
 }
 
 #[cfg(test)]

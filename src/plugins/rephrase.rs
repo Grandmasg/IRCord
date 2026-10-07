@@ -185,7 +185,7 @@ impl Plugin for RephrasePlugin {
 
         // Bewaar de laatste 25 berichten per kanaal in het ringbuffer
         let mut lock = self.recent_messages.lock().unwrap();
-        let queue = lock.entry(msg.channel.clone()).or_insert_with(VecDeque::new);
+        let queue = lock.entry(msg.channel.clone()).or_default();
 
         if queue.len() >= 25 {
             queue.pop_front();

@@ -56,7 +56,7 @@ Drawing inspiration from classic bots such as [CloudBot](https://github.com/Tota
    - Dynamic configuration validation (`config.toml`).
 
 3. **Modular Plugin System**
-   - 25 built-in native plugins covering community tools, moderation, statistics, media, gaming, and AI.
+   - 40+ built-in native plugins covering community tools, moderation, statistics, media, gaming, and AI.
    - Support for hot-reloadable **[Rhai](https://rhai.rs/) scripts** in `./scripts/` for dynamic custom commands without recompiling.
 
 4. **Local Edge AI & Vision**
@@ -72,16 +72,19 @@ Drawing inspiration from classic bots such as [CloudBot](https://github.com/Tota
 6. **Security & Channel Moderation**
    - IRCv3 SASL authentication (secure authentication before joining `+r` channels).
    - Flood guard with configurable delays and line byte limits.
-   - Anti-raid and clone join detection.
-   - Automatic pastebin threshold for long code snippets (> 4 lines).
+   - Anti-raid: when `raid_threshold_joins_per_sec` users join a channel within one second, the bot sets it `+m` for `raid_mute_duration_sec` seconds (requires channel operator status).
+   - Verified owner/operator identity: set `bot_owner_irc_account` and the bot requires the server-confirmed account (IRCv3 `account-tag`), so taking over the owner's nick gives no rights. Extra operators via `operator_irc_accounts` / `operator_discord_ids`.
+   - SSRF protection for every user-supplied URL (`!http`, `!ssl`, `!rss`, `!tldr`, link titles): public-only DNS resolution, per-hop redirect checks and response size limits.
+   - Long Discord messages (> `pastebin_threshold_lines`) are truncated for IRC, or uploaded to dpaste.org when `pastebin_enabled = true` (opt-in: the text goes to a third party).
    - Live token and secret leak detection via `SafetyPlugin`.
 
 7. **Observability & Webhooks**
    - Built-in Axum HTTP server on port `9090`.
    - `/health` endpoint for Docker and Kubernetes health probes.
-   - `/metrics` endpoint for uptime, memory, and cache statistics.
-   - `/api/errors` endpoint for real-time diagnostics buffer.
-   - `/api/github` webhook endpoint with HMAC SHA-256 signature verification.
+   - `/metrics` endpoint with real uptime, plugin count, error count and (on Linux) resident memory.
+   - `/api/errors` diagnostics buffer, protected by `Authorization: Bearer $HTTP_API_TOKEN` (disabled when the token is unset).
+   - `/api/github` webhook with mandatory HMAC SHA-256 signature (disabled without `GITHUB_WEBHOOK_SECRET`). Push, pull request, issue and release events are announced in all bridged channels.
+   - `http_bind` selects the listen address (use `127.0.0.1` behind a reverse proxy).
 
 ---
 
@@ -98,7 +101,7 @@ Drawing inspiration from classic bots such as [CloudBot](https://github.com/Tota
 └────────────────┘                             │  │ discord_task │◄──────mpsc───────────┤               │
                                                │  └──────────────┘                      ▼               │
 ┌────────────────┐     HTTP Webhooks           │  ┌──────────────┐         ┌─────────────────────────┐  │
-│ GitHub / Feeds │──(HMAC Verified)───────────►│  │ axum_http_srv│──mpsc──►│  Plugin Manager (25)    │  │
+│ GitHub / Feeds │──(HMAC Verified)───────────►│  │ axum_http_srv│──mpsc──►│  Plugin Manager (40+)    │  │
 └────────────────┘                             │  └──────────────┘         └────────────┬────────────┘  │
                                                │                                        │               │
                                                │        ┌──────────────┬────────────────┼─────────────┐ │
@@ -153,9 +156,9 @@ All commands accept either an exclamation mark (`!`) or a period (`.`) by defaul
 | | `!eli5` | Explains a complex statement or sentence like I'm 5 years old (using analogies/metaphors). | `!eli5`, `!eli5 Quantum computing` |
 | | `!zakelijk`, `!corporate` | Converts blunt, casual, or frustrated chat messages into polished, professional, diplomatic phrasing. | `!zakelijk Hurry up with this` |
 | | `!beknopt`, `!kort` | Strips all fluff and summarizes the essential core takeaway into 1 punchy sentence. | `!beknopt`, `!kort Long explanation...` |
-| **Translate** | `!translate`, `!tr`, `!vertaal` | Translates text using local AI (with seamless fallback to web translation). | `!tr de Good morning!`, `!tr en:nl Hello` |
+| **Translate** | `!translate`, `!tr`, `!vertaal` | Translates text with DeepL (if `DEEPL_API_KEY` is set), else local AI, else web translation. | `!tr de Good morning!`, `!tr en:nl Hello` |
 | | `!chatlang` | Inspect or update the channel's default primary language (`!chatlang nl`, `!chatlang en`). | `!chatlang`, `!chatlang nl` |
-| | `!autotr` | Enable or disable real-time autonomous channel chat translation (`!autotr on`, `!autotr off`, `!autotr status`). Non-standard languages are automatically translated! *(Idea by ®Cjefke 2026)* | `!autotr on`, `!autotr off` |
+| | `!autotr` | Enable or disable real-time autonomous channel chat translation (`!autotr on`, `!autotr off`, `!autotr status`). Detection uses an offline n-gram language detector (`lingua`: NL/EN/DE/FR/ES/IT/PT) and only translates when the detector is confident the message is not in the channel language; with DeepL configured it also asks DeepL for the source language. Short messages, nicks, release codes and near-identical "translations" are ignored. *(Idea by ®Cjefke 2026)* | `!autotr on`, `!autotr off` |
 | **Language** | `!lang`, `!taal`, `!setlang` | Set or inspect your personal language preference (`!lang nl`, `!lang en`, `!lang de`, `!lang reset`). Responses & AI prompts automatically adapt. | `!lang nl`, `!lang en`, `!lang` |
 | **Weather** | `!weather`, `!weer`, `!wetter`| Comprehensive weather report: condition (emoji), temperature (apparent, min/max), humidity, precipitation (+ % rain chance), wind direction & Beaufort, pressure, and sunrise/sunset (Open-Meteo). Supports default location per user via `!weather set <city>` and clearing via `!weather unset`. | `!weather Amsterdam`, `!weather set Amsterdam`, `!weather`, `!weather quota` |
 | **Festive** | `!kerst`, `!kerts`, `!xmas` | Countdown to Christmas Day (Dec 25) & Christmas Eve (Dec 24) with seasonal greetings! | `!kerst`, `!xmas` |
@@ -181,17 +184,21 @@ All commands accept either an exclamation mark (`!`) or a period (`.`) by defaul
 | **Remind** | `!remind`, `!reminder`, `!remindme` | Sets a timer reminder. | `!remind 10m Check server backup!` |
 | **Alias** | `!alias` | Custom channel alias management. | `!alias add docs https://rust-lang.org` |
 | **Birthdays** | `!bday`, `!verjaardag`, `!jarig` | Register birthdays (`!bday set DD-MM[-YYYY]`), view upcoming birthdays (`!bday next` or `!jarig`), or check a friend's date (`!jarig nick`). The bot automatically sends morning greetings with age and cake! | `!bday set 24-09`, `!jarig next`, `!jarig Alice` |
-| **Admin & Logs**| `!status`, `!ping`, `!stats` | Reports uptime, active plugins, memory, and database metrics. | `!status` |
+| **Admin & Logs**| `!status`, `!ping`, `!stats`, `!uptime` | Reports uptime, active plugins, memory, and database metrics. | `!status`, `!uptime` |
+| | `!setmodel <name>` | Operator-only shortcut for `!ai model <name>`. | `!setmodel qwen2.5-coder` |
 | | `!errors`, `!errorlog` | Shows recent errors or panics in PM or `#bot-logs`. Use `clear` to reset. | `!errors 5`, `!errors clear` |
 | **Identity & Bridge**| `!link`, `!whois` | Link IRC nick and Discord account via 6-digit OTP code. View profiles, linked identities, karma, and birthdays. | `!link @Alice`, `!link verify 123456`, `!whois Alice` |
 | | `!bridge stats`, `!top` | Shows total bridge metrics (message count, IRC vs Discord distribution) and top chatters. | `!bridge stats` |
 | **Sysadmin & NAS** | `!nas`, `!hw`, `!sysinfo` | Telemetry for Minisforum N5 Pro NAS: OS, CPU load, RAM usage, and Radeon 890M GPU status. | `!nas` |
 | | `!dns <domain> [type]` | Fast DNS resolution via trustless DNS-over-HTTPS (DoH). Supports A, AAAA, MX, TXT, CNAME. | `!dns tweakers.net A` |
 | | `!ssl <domain>`, `!http <url>`| Validates HTTPS/TLS handshake and HSTS, or probes HTTP latency, status code, and headers (SSRF-protected). | `!ssl tweakers.net`, `!http https://site.com` |
-| **RSS Feeds** | `!rss add/list/del/latest`| Subscribes to RSS/Atom feeds. Background task polls feeds every 10 minutes and broadcasts new articles. | `!rss add https://tweakers.net/feeds/nieuws.xml #general` |
+| **RSS Feeds** | `!rss add/list/del/latest`| Subscribes to RSS/Atom feeds (add/del: operators only). Background task polls feeds every 10 minutes and announces up to 3 new articles per feed; `!track` keywords trigger private alerts. | `!rss add https://tweakers.net/feeds/nieuws.xml #general` |
 | **Tech & GitHub** | `!gh`, `!github <repo>` | Fetches stars, open issues, description, and latest release from the official GitHub REST API. | `!gh rust-lang/rust` |
 | | `!cve`, `!security <id>` | Looks up vulnerability details and CVSS security scores from the official OSV.dev / NIST database. | `!cve CVE-2024-3094` |
-| **Sed (Passive)** | `s/old/new/` | Automatically corrects typos from your previous message. | `s/teh/the/` |
+| **Sed (Passive)** | `s/old/new/[gi N]` | Sed-style correction: searches the last 50 channel messages for your latest one that matches. Real regex (`\1`, `&`), flags `g`/`i`/`N`, other delimiters (`s#a#b#`), and `nick: s/old/new/` to correct someone else. Output: `✏️ Alice meant: …` | `s/teh/the/`, `PjoT: s/mij/ik/` |
+| **Holidays** | `!vakantie [region]`, `!vakanties [year] [region]` | Dutch school holidays from the official Rijksoverheid open data API (free, keyless). Fetched at most once a year and cached in `data/`. | `!vakantie noord`, `!vakanties 2027` |
+| **Track** | `!track <word>`, `!track list`, `!untrack <word>` | Private-message alert when a new RSS article contains your keyword (max. 10 per user, IRC only). | `!track rust` |
+| **Stats** | `!peak` | Busiest day in the channel (most unique chatters / most messages), derived from the chat log. | `!peak` |
 | **URL Titler** | *Automatic* | Detects URLs in chat and posts page `<title>` previews. | `https://github.com/...` |
 | **Safety** | *Automatic* | Detects and warns when someone accidentally leaks API keys or tokens. | — |
 | **Reactions** | *Automatic* | Responds to specific community keywords and greetings. | — |
@@ -260,12 +267,17 @@ docker compose logs -f ircord-ollama-init
 
 ```toml
 [general]
-language = "en" # Default language: "en", "nl", "de", "fr", "es"
+language = "en" # Default language: "en", "nl", "de", "fr", "es", "zh"
 command_prefixes = ["!", "."] # Recognized command prefixes in chat (e.g. !weer, .weather)
 bot_owner_discord_id = 0
 bot_owner_irc_nick = "YourNick"
+bot_owner_irc_account = "" # NickServ/SASL account; when set, the owner is recognised by verified account, not by nick
+operator_irc_accounts = []
+operator_discord_ids = []
 http_port = 9090
+http_bind = "0.0.0.0" # "127.0.0.1" behind a reverse proxy
 pastebin_threshold_lines = 4
+pastebin_enabled = false # true = upload long Discord messages to dpaste.org (third party!)
 admin_channel_irc = "#bot-logs"
 admin_channel_discord_id = 0 # Optional: Discord channel ID for #bot-logs
 
@@ -303,6 +315,8 @@ raid_threshold_joins_per_sec = 5
 raid_mute_duration_sec = 60
 ```
 
+> **Reserved settings (not active yet):** `loop_prevent_timeout_sec`, `sync_presence`, `sync_edits`, `sliding_window_size` are accepted by the config parser but no feature reads them yet. Presence sync, edit sync and file/image bridging (`!upload`, `!img`) from the design spec are still on the roadmap.
+
 ---
 
 ## 📂 Project Structure
@@ -320,7 +334,7 @@ IRCord/
 │   ├── config.rs              # TOML configuration parser & validator
 │   ├── discord/               # Serenity Gateway handler & Webhook dispatcher
 │   ├── irc/                   # IRC client task, SASL handler & flood guard
-│   ├── plugins/               # 25 modular plugins (WhatPulse, AI, Moderation, etc.)
+│   ├── plugins/               # 40+ modular plugins (WhatPulse, AI, Moderation, etc.)
 │   ├── utils/                 # Lifecycle, error logger & formatting helpers
 │   ├── web/                   # Axum HTTP server (/health, /metrics, /api/errors)
 │   └── main.rs                # Daemon startup sequence & dispatch loops
