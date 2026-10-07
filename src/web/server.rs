@@ -27,6 +27,15 @@ pub struct WebState {
 
 pub struct WebServer;
 
+pub fn build_router(state: WebState) -> Router {
+    Router::new()
+        .route("/health", get(health_handler))
+        .route("/metrics", get(metrics_handler))
+        .route("/api/errors", get(errors_handler))
+        .route("/api/github", post(github_webhook_handler))
+        .with_state(state)
+}
+
 impl WebServer {
     pub async fn start(
         config: Arc<Config>,
@@ -39,12 +48,7 @@ impl WebServer {
         let bind = config.general.http_bind.clone();
         let state = WebState { config, error_logger, started: Instant::now(), plugin_count, announce_tx };
 
-        let app = Router::new()
-            .route("/health", get(health_handler))
-            .route("/metrics", get(metrics_handler))
-            .route("/api/errors", get(errors_handler))
-            .route("/api/github", post(github_webhook_handler))
-            .with_state(state);
+        let app = build_router(state);
 
         let listener = tokio::net::TcpListener::bind(format!("{}:{}", bind, port)).await?;
         info!("Axum HTTP server luistert op {}:{}", bind, port);
@@ -171,6 +175,76 @@ async fn github_webhook_handler(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    use hmac::{Hmac, Mac};
+    use sha2::Sha256;
+
+    async fn spawn_server() -> (String, mpsc::Receiver<String>) {
+        let (tx, rx) = mpsc::channel(8);
+        let state = WebState {
+            config: Arc::new(crate::config::test_config("", "")),
+            error_logger: Arc::new(ErrorLogger::new(10)),
+            started: Instant::now(),
+            plugin_count: 3,
+            announce_tx: tx,
+        };
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, build_router(state)).await.unwrap();
+        });
+        (format!("http://{}", addr), rx)
+    }
+
+    fn sign(secret: &str, body: &str) -> String {
+        let mut mac = Hmac::<Sha256>::new_from_slice(secret.as_bytes()).unwrap();
+        mac.update(body.as_bytes());
+        format!("sha256={}", hex::encode(mac.finalize().into_bytes()))
+    }
+
+    /// Echte HTTP-aanroepen tegen de router. De omgevingsvariabelen zijn proceswijd, dus alles in één test.
+    #[tokio::test]
+    async fn http_endpoints_enforce_secrets_and_announce_events() {
+        let (base, mut rx) = spawn_server().await;
+        let http = reqwest::Client::new();
+
+        // Open endpoints
+        let metrics: serde_json::Value = http.get(format!("{base}/metrics")).send().await.unwrap().json().await.unwrap();
+        assert_eq!(metrics["plugins"], 3);
+        assert!(metrics["uptime_seconds"].is_number());
+        assert_eq!(http.get(format!("{base}/health")).send().await.unwrap().status(), 200);
+
+        // Webhook zonder geheim = uitgeschakeld
+        std::env::remove_var("GITHUB_WEBHOOK_SECRET");
+        let body = r#"{"action":"opened","issue":{"number":7,"title":"Kapot"},"repository":{"name":"ircord"},"sender":{"login":"henk"}}"#;
+        let r = http.post(format!("{base}/api/github")).header("X-GitHub-Event", "issues").body(body).send().await.unwrap();
+        assert_eq!(r.status(), 503);
+
+        // Met geheim: slechte handtekening geweigerd, goede aangenomen en aangekondigd
+        std::env::set_var("GITHUB_WEBHOOK_SECRET", "s3cret");
+        let r = http.post(format!("{base}/api/github")).header("X-GitHub-Event", "issues")
+            .header("X-Hub-Signature-256", sign("fout", body)).body(body).send().await.unwrap();
+        assert_eq!(r.status(), 401);
+        let r = http.post(format!("{base}/api/github")).header("X-GitHub-Event", "issues")
+            .header("X-Hub-Signature-256", sign("s3cret", body)).body(body).send().await.unwrap();
+        assert_eq!(r.status(), 200);
+        let line = rx.recv().await.unwrap();
+        assert!(line.contains("Issue #7") && line.contains("Kapot"), "{line}");
+        let r = http.post(format!("{base}/api/github")).header("X-GitHub-Event", "ping")
+            .header("X-Hub-Signature-256", sign("s3cret", "{}")).body("{}").send().await.unwrap();
+        assert_eq!(r.text().await.unwrap(), "pong");
+
+        // /api/errors: token vereist
+        std::env::remove_var("HTTP_API_TOKEN");
+        assert_eq!(http.get(format!("{base}/api/errors")).send().await.unwrap().status(), 403);
+        std::env::set_var("HTTP_API_TOKEN", "tok");
+        assert_eq!(http.get(format!("{base}/api/errors")).send().await.unwrap().status(), 401);
+        assert_eq!(http.get(format!("{base}/api/errors")).header("Authorization", "Bearer fout").send().await.unwrap().status(), 401);
+        assert_eq!(http.get(format!("{base}/api/errors")).header("Authorization", "Bearer tok").send().await.unwrap().status(), 200);
+
+        std::env::remove_var("GITHUB_WEBHOOK_SECRET");
+        std::env::remove_var("HTTP_API_TOKEN");
+    }
 
     #[test]
     fn token_comparison() {

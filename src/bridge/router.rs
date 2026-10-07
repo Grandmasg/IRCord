@@ -1,4 +1,4 @@
-use super::BridgeMessage;
+use super::{BridgeMessage, PresenceEvent, Platform};
 use crate::config::ChannelMapping;
 use crate::utils::sanitizer::{anti_ping_nick, sanitize_discord_emojis, sanitize_for_irc, strip_mirc_codes};
 use lru::LruCache;
@@ -9,6 +9,7 @@ use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)] // channel/content/timestamp worden bewaard voor toekomstige echo-dedup en reply-sync
 pub struct IrcMessageRef {
     pub channel: String,
     pub author: String,
@@ -26,6 +27,7 @@ pub struct BridgeRouter {
 }
 
 impl BridgeRouter {
+    #[allow(dead_code)] // productiecode gebruikt with_prefixes
     pub fn new(mappings: Vec<ChannelMapping>, lru_capacity: usize) -> Self {
         Self::with_prefixes(mappings, lru_capacity, vec!["!".to_string(), ".".to_string()])
     }
@@ -62,36 +64,28 @@ impl BridgeRouter {
         };
 
         {
-            let mut d2i = self.discord_to_irc.lock().unwrap();
+            let mut d2i = self.discord_to_irc.lock().unwrap_or_else(|e| e.into_inner());
             d2i.put(discord_id.clone(), irc_ref);
         }
 
         {
-            let mut i2d = self.irc_to_discord.lock().unwrap();
+            let mut i2d = self.irc_to_discord.lock().unwrap_or_else(|e| e.into_inner());
             i2d.put(hash, discord_id);
         }
     }
 
     /// Zoekt de IRC context op basis van een Discord Message ID (bijv. bij een reply of emoji-reactie)
     pub fn lookup_irc_by_discord_id(&self, discord_id: &str) -> Option<IrcMessageRef> {
-        let mut cache = self.discord_to_irc.lock().unwrap();
+        let mut cache = self.discord_to_irc.lock().unwrap_or_else(|e| e.into_inner());
         cache.get(discord_id).cloned()
     }
 
-    /// Zoekt het Discord Message ID op basis van een IRC bericht
+    /// Zoekt het Discord Message ID op basis van een IRC bericht (nu alleen door tests gebruikt; voor echo-dedup)
+    #[allow(dead_code)]
     pub fn lookup_discord_by_irc(&self, channel: &str, author: &str, content: &str) -> Option<String> {
         let hash = Self::compute_message_hash(channel, author, content);
-        let mut cache = self.irc_to_discord.lock().unwrap();
+        let mut cache = self.irc_to_discord.lock().unwrap_or_else(|e| e.into_inner());
         cache.get(&hash).cloned()
-    }
-
-    /// Achterwaartse compatibiliteit voor reply-tracking
-    pub fn record_message_author(&self, message_id: String, author: String) {
-        self.record_bridge_link(message_id, "".into(), author, "".into());
-    }
-
-    pub fn lookup_reply_author(&self, message_id: &str) -> Option<String> {
-        self.lookup_irc_by_discord_id(message_id).map(|r| r.author)
     }
 
     /// Zoekt het gekoppelde Discord kanaal en de webhook URL voor een IRC kanaal
@@ -130,6 +124,35 @@ impl BridgeRouter {
         }
     }
 
+    /// Melding voor IRC dat een Discord-bericht is bewerkt.
+    pub fn format_edit_for_irc(&self, author: &str, new_content: &str) -> String {
+        let clean = sanitize_for_irc(&sanitize_discord_emojis(new_content));
+        format!("\u{270F}\u{FE0F} <{}> (bewerkt): {}", anti_ping_nick(author), clean)
+    }
+
+    /// Melding voor IRC dat een Discord-bericht is verwijderd (de inhoud wordt bewust niet herhaald).
+    pub fn format_delete_for_irc(&self, author: &str) -> String {
+        format!("\u{1F5D1}\u{FE0F} {} heeft een bericht verwijderd", anti_ping_nick(author))
+    }
+
+    /// Zet een IRC-aanwezigheidsgebeurtenis om naar `(kanaal, tekst)` voor Discord; `None` = niets te melden.
+    pub fn format_presence_for_discord(&self, ev: &PresenceEvent) -> Option<(Option<String>, String)> {
+        match ev {
+            PresenceEvent::Join { nick, platform: Platform::Irc, channel } => {
+                Some((Some(channel.clone()), format!("\u{27A1}\u{FE0F} **{}** heeft {} betreden", nick, channel)))
+            }
+            PresenceEvent::Part { nick, platform: Platform::Irc, channel, reason } => {
+                let why = reason.as_deref().filter(|r| !r.is_empty()).map(|r| format!(" ({})", r)).unwrap_or_default();
+                Some((Some(channel.clone()), format!("\u{2B05}\u{FE0F} **{}** heeft {} verlaten{}", nick, channel, why)))
+            }
+            PresenceEvent::Quit { nick, platform: Platform::Irc, channel, reason } => {
+                let why = reason.as_deref().filter(|r| !r.is_empty()).map(|r| format!(" ({})", r)).unwrap_or_default();
+                Some((channel.clone(), format!("\u{1F50C} **{}** heeft IRC verlaten{}", nick, why)))
+            }
+            _ => None,
+        }
+    }
+
     /// Formatteert een binnenkomend IRC-bericht voor weergave via een Discord Webhook
     pub fn format_for_discord_webhook(&self, msg: &BridgeMessage) -> (String, String) {
         let username = msg.author_name.clone();
@@ -141,7 +164,7 @@ impl BridgeRouter {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::bridge::{Platform, ReplyContext};
+    use crate::bridge::ReplyContext;
 
     #[test]
     fn test_format_for_irc() {
@@ -150,6 +173,7 @@ mod tests {
             discord_channel_id: 123,
             discord_webhook_url: "https://discord.com/...".into(),
             language: None,
+            disabled_plugins: vec![],
         }];
         let router = BridgeRouter::new(mappings, 100);
 
@@ -158,6 +182,7 @@ mod tests {
             source_channel: "123".into(),
             author_name: "Pietje".into(),
             author_id: Some("1".into()),
+            message_id: None,
             content: "Hallo wereld!".into(),
             reply_to: Some(ReplyContext {
                 target_nick: "Klaas".into(),
@@ -195,5 +220,22 @@ mod tests {
         assert!(router.should_ignore("!ai wat is dit?"));
         assert!(router.should_ignore(".help"));
         assert!(!router.should_ignore("Gewoon een gezellig bericht!"));
+    }
+
+    #[test]
+    fn edit_delete_and_presence_formatting() {
+        let router = BridgeRouter::new(vec![], 100);
+        let edit = router.format_edit_for_irc("Pietje", "nieuwe tekst\nregel 2");
+        assert!(edit.contains("(bewerkt): nieuwe tekst regel 2"), "{edit}");
+        let del = router.format_delete_for_irc("Pietje");
+        assert!(del.ends_with("heeft een bericht verwijderd") && !del.contains("tekst"));
+
+        let join = PresenceEvent::Join { nick: "henk".into(), platform: Platform::Irc, channel: "#a".into() };
+        assert_eq!(router.format_presence_for_discord(&join).unwrap().0.as_deref(), Some("#a"));
+        let quit = PresenceEvent::Quit { nick: "henk".into(), platform: Platform::Irc, channel: None, reason: Some("Ping timeout".into()) };
+        let (chan, text) = router.format_presence_for_discord(&quit).unwrap();
+        assert!(chan.is_none() && text.contains("(Ping timeout)"), "{text}");
+        let discord = PresenceEvent::Join { nick: "x".into(), platform: Platform::Discord, channel: "1".into() };
+        assert!(router.format_presence_for_discord(&discord).is_none());
     }
 }

@@ -1,22 +1,29 @@
 use async_trait::async_trait;
 use serenity::client::{Context, EventHandler};
 use serenity::model::channel::Message;
+use serenity::model::event::MessageUpdateEvent;
+use serenity::model::id::{ChannelId, GuildId, MessageId};
 use serenity::model::gateway::Ready;
 use tokio::sync::mpsc::Sender;
 use tracing::{debug, info};
 
-use crate::bridge::{BridgeMessage, Platform, ReplyContext};
+use crate::bridge::{BridgeMessage, DiscordEvent, Platform, ReplyContext};
 use crate::config::Config;
 use std::sync::Arc;
 
 pub struct DiscordHandler {
     config: Arc<Config>,
     inbound_tx: Sender<BridgeMessage>,
+    event_tx: Sender<DiscordEvent>,
 }
 
 impl DiscordHandler {
-    pub fn new(config: Arc<Config>, inbound_tx: Sender<BridgeMessage>) -> Self {
-        Self { config, inbound_tx }
+    pub fn new(config: Arc<Config>, inbound_tx: Sender<BridgeMessage>, event_tx: Sender<DiscordEvent>) -> Self {
+        Self { config, inbound_tx, event_tx }
+    }
+
+    fn is_linked(&self, channel_id: u64) -> bool {
+        self.config.channels.iter().any(|m| m.discord_channel_id == channel_id)
     }
 }
 
@@ -64,11 +71,41 @@ impl EventHandler for DiscordHandler {
             source_channel: channel_id.to_string(),
             author_name: msg.author.name.clone(),
             author_id: Some(msg.author.id.to_string()),
+            message_id: Some(msg.id.to_string()),
             content: full_content,
             reply_to: reply_context,
             is_action: false,
         };
 
         let _ = self.inbound_tx.send(bridge_msg).await;
+    }
+
+    async fn message_update(&self, _ctx: Context, _old: Option<Message>, _new: Option<Message>, event: MessageUpdateEvent) {
+        if !self.config.bridge.sync_edits {
+            return;
+        }
+        // Bots en webhooks (inclusief onze eigen relay) negeren
+        if event.author.as_ref().map(|a| a.bot).unwrap_or(false) {
+            return;
+        }
+        let channel_id = event.channel_id.get();
+        let Some(new_content) = event.content else { return };
+        if !self.is_linked(channel_id) {
+            return;
+        }
+        let _ = self
+            .event_tx
+            .send(DiscordEvent::Edited { channel_id, message_id: event.id.to_string(), new_content })
+            .await;
+    }
+
+    async fn message_delete(&self, _ctx: Context, channel_id: ChannelId, deleted_message_id: MessageId, _guild_id: Option<GuildId>) {
+        if !self.config.bridge.sync_edits || !self.is_linked(channel_id.get()) {
+            return;
+        }
+        let _ = self
+            .event_tx
+            .send(DiscordEvent::Deleted { channel_id: channel_id.get(), message_id: deleted_message_id.to_string() })
+            .await;
     }
 }

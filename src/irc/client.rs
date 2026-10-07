@@ -1,5 +1,5 @@
 use super::flood::{chunk_irc_message, RaidGuard, TokenBucketLimiter};
-use crate::bridge::{BridgeMessage, Platform};
+use crate::bridge::{BridgeMessage, Platform, PresenceEvent};
 use crate::config::Config;
 use crate::utils::sanitizer::sanitize_for_irc;
 use std::sync::Arc;
@@ -60,6 +60,7 @@ pub struct IrcClient {
     inbound_tx: Sender<BridgeMessage>,
     outbound_rx: Receiver<BridgeMessage>,
     raw_cmd_rx: Receiver<String>,
+    presence_tx: Option<Sender<PresenceEvent>>,
     shutdown_token: CancellationToken,
 }
 
@@ -69,6 +70,7 @@ impl IrcClient {
         inbound_tx: Sender<BridgeMessage>,
         outbound_rx: Receiver<BridgeMessage>,
         raw_cmd_rx: Receiver<String>,
+        presence_tx: Option<Sender<PresenceEvent>>,
         shutdown_token: CancellationToken,
     ) -> Self {
         Self {
@@ -76,6 +78,7 @@ impl IrcClient {
             inbound_tx,
             outbound_rx,
             raw_cmd_rx,
+            presence_tx,
             shutdown_token,
         }
     }
@@ -144,6 +147,8 @@ impl IrcClient {
         let raid_mute = std::time::Duration::from_secs(self.config.moderation.raid_mute_duration_sec);
         let mut unmute_at: std::collections::HashMap<String, std::time::Instant> = std::collections::HashMap::new();
         let mut raid_tick = tokio::time::interval(std::time::Duration::from_secs(2));
+        // Laatst bekend kanaal per nick (voor QUIT-meldingen, die zelf geen kanaal bevatten)
+        let mut nick_channels: std::collections::HashMap<String, String> = std::collections::HashMap::new();
 
         loop {
             line_buf.clear();
@@ -237,6 +242,37 @@ impl IrcClient {
                         }
                     }
 
+                    // Aanwezigheid (JOIN/PART/QUIT) doorgeven aan de bridge; we onthouden het laatste kanaal per nick
+                    if parts.len() > 1 && matches!(parts[1], "JOIN" | "PART" | "QUIT") {
+                        let who = parts[0].trim_start_matches(':').split('!').next().unwrap_or("").to_string();
+                        if !who.is_empty() && !who.eq_ignore_ascii_case(nick) {
+                            let key = who.to_lowercase();
+                            // QUIT heeft de reden als 3e veld, PART als 4e (de reden mag spaties bevatten)
+                            let reason = if parts[1] == "QUIT" { raw.splitn(3, ' ').nth(2) } else { raw.splitn(4, ' ').nth(3) }
+                                .map(|r| r.trim_start_matches(':').to_string());
+                            let event = match parts[1] {
+                                "JOIN" if parts.len() > 2 => {
+                                    let chan = parts[2].trim_start_matches(':').to_string();
+                                    nick_channels.insert(key, chan.clone());
+                                    Some(PresenceEvent::Join { nick: who, platform: Platform::Irc, channel: chan })
+                                }
+                                "PART" if parts.len() > 2 => {
+                                    let chan = parts[2].to_string();
+                                    nick_channels.remove(&key);
+                                    Some(PresenceEvent::Part { nick: who, platform: Platform::Irc, channel: chan, reason })
+                                }
+                                "QUIT" => {
+                                    let chan = nick_channels.remove(&key);
+                                    Some(PresenceEvent::Quit { nick: who, platform: Platform::Irc, channel: chan, reason })
+                                }
+                                _ => None,
+                            };
+                            if let (Some(ev), Some(tx)) = (event, self.presence_tx.as_ref()) {
+                                let _ = tx.try_send(ev);
+                            }
+                        }
+                    }
+
                     // JOIN-flood detectie (alleen joins van anderen)
                     if parts.len() > 2 && parts[1] == "JOIN" {
                         let joiner = parts[0].trim_start_matches(':').split('!').next().unwrap_or("");
@@ -322,6 +358,12 @@ impl IrcClient {
                             }
 
                             if !sender_nick.eq_ignore_ascii_case(nick) {
+                                if target_chan.starts_with('#') {
+                                    if nick_channels.len() > 5000 {
+                                        nick_channels.clear();
+                                    }
+                                    nick_channels.insert(sender_nick.to_lowercase(), target_chan.to_string());
+                                }
                                 let bridge_msg = BridgeMessage {
                                     source_platform: Platform::Irc,
                                     source_channel: target_chan.to_string(),
@@ -330,6 +372,7 @@ impl IrcClient {
                                     author_id: tag_account
                                         .as_ref()
                                         .map(|a| format!("{}{}", crate::config::IRC_ACCOUNT_PREFIX, a)),
+                                    message_id: None,
                                     content: text.to_string(),
                                     reply_to: None,
                                     is_action: text.starts_with("\x01ACTION"),
@@ -407,6 +450,109 @@ mod tests {
         assert_eq!(rest, ":nick!u@h PRIVMSG #c :hoi");
         assert_eq!(split_tags("@account=* :n!u@h PRIVMSG #c :x").0, None);
         assert_eq!(split_tags(":n!u@h PRIVMSG #c :x").0, None);
+    }
+
+    use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+    use tokio::net::TcpListener;
+    use tokio::sync::mpsc;
+
+    async fn read_until(reader: &mut BufReader<tokio::net::tcp::OwnedReadHalf>, needle: &str, seen: &mut Vec<String>) {
+        let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(5);
+        loop {
+            let mut line = String::new();
+            let n = tokio::time::timeout_at(deadline, reader.read_line(&mut line))
+                .await
+                .unwrap_or_else(|_| panic!("timeout: wachtte op '{}', zag {:?}", needle, seen))
+                .unwrap();
+            assert!(n > 0, "verbinding gesloten; wachtte op '{}', zag {:?}", needle, seen);
+            let line = line.trim().to_string();
+            seen.push(line.clone());
+            if line.contains(needle) {
+                return;
+            }
+        }
+    }
+
+    /// Volledige handshake + berichtenstroom tegen een nep-IRC-server.
+    #[tokio::test]
+    async fn handshake_chat_presence_and_raid_guard_against_mock_server() {
+        std::env::remove_var("IRC_SASL_PASS");
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+
+        let (inbound_tx, mut inbound_rx) = mpsc::channel(16);
+        let (out_tx, out_rx) = mpsc::channel(16);
+        let (_raw_tx, raw_rx) = mpsc::channel(16);
+        let (presence_tx, mut presence_rx) = mpsc::channel(16);
+        let token = CancellationToken::new();
+        let cfg = Arc::new(crate::config::test_config("", ""));
+        let mut client = IrcClient::new(cfg, inbound_tx, out_rx, raw_rx, Some(presence_tx), token.clone());
+        let client_task = tokio::spawn(async move { client.connect_and_loop("127.0.0.1", port, "Monkeybot").await });
+
+        let (sock, _) = listener.accept().await.unwrap();
+        let (r, mut w) = sock.into_split();
+        let mut reader = BufReader::new(r);
+        let mut seen = Vec::new();
+
+        // 1. Handshake: account-tag aangevraagd, NICK/USER verstuurd
+        read_until(&mut reader, "USER Monkeybot", &mut seen).await;
+        assert!(seen.iter().any(|l| l == "CAP REQ :account-tag"), "{:?}", seen);
+        assert!(seen.iter().any(|l| l == "NICK Monkeybot"), "{:?}", seen);
+
+        // 2. Welkom (001) => het bridge-kanaal wordt betreden
+        w.write_all(b":srv 001 Monkeybot :Welcome\r\n").await.unwrap();
+        read_until(&mut reader, "JOIN #test", &mut seen).await;
+
+        // 3. PING/PONG
+        w.write_all(b"PING :abc123\r\n").await.unwrap();
+        read_until(&mut reader, "PONG :abc123", &mut seen).await;
+
+        // 4. Chatbericht met bevestigd account (account-tag) komt als BridgeMessage binnen
+        w.write_all(b"@account=Boss :Boss!u@2001:db8::1 PRIVMSG #test :hallo: wereld 12:30\r\n").await.unwrap();
+        let msg = tokio::time::timeout(std::time::Duration::from_secs(5), inbound_rx.recv()).await.unwrap().unwrap();
+        assert_eq!(msg.author_name, "Boss");
+        assert_eq!(msg.author_id.as_deref(), Some("irc-account:Boss"));
+        assert_eq!(msg.content, "hallo: wereld 12:30");
+        assert_eq!(msg.source_channel, "#test");
+
+        // Zonder tag geen account (nick-spoofing krijgt geen eigenaarrechten)
+        w.write_all(b":BossNick!x@y PRIVMSG #test :hoi\r\n").await.unwrap();
+        let msg = tokio::time::timeout(std::time::Duration::from_secs(5), inbound_rx.recv()).await.unwrap().unwrap();
+        assert_eq!(msg.author_id, None);
+
+        // 5. Aanwezigheid: JOIN en QUIT (met onthouden kanaal)
+        w.write_all(b":henk!u@h JOIN #test\r\n:henk!u@h QUIT :Ping timeout\r\n").await.unwrap();
+        let join = tokio::time::timeout(std::time::Duration::from_secs(5), presence_rx.recv()).await.unwrap().unwrap();
+        assert!(matches!(join, PresenceEvent::Join { ref nick, ref channel, .. } if nick == "henk" && channel == "#test"));
+        let quit = tokio::time::timeout(std::time::Duration::from_secs(5), presence_rx.recv()).await.unwrap().unwrap();
+        assert!(matches!(quit, PresenceEvent::Quit { ref channel, ref reason, .. }
+            if channel.as_deref() == Some("#test") && reason.as_deref() == Some("Ping timeout")), "{:?}", quit);
+
+        // 6. Uitgaand bericht van de bot wordt als PRIVMSG verstuurd
+        out_tx
+            .send(BridgeMessage {
+                source_platform: Platform::Irc,
+                source_channel: "#test".into(),
+                author_name: "IRCord".into(),
+                author_id: None,
+                message_id: None,
+                content: "antwoord van de bot".into(),
+                reply_to: None,
+                is_action: false,
+            })
+            .await
+            .unwrap();
+        read_until(&mut reader, "PRIVMSG #test :antwoord van de bot", &mut seen).await;
+
+        // 7. Join-flood (5 joins binnen 1s) => kanaal op +m
+        let burst: String = (0..5).map(|i| format!(":raid{i}!u@h JOIN #test\r\n")).collect();
+        w.write_all(burst.as_bytes()).await.unwrap();
+        read_until(&mut reader, "MODE #test +m", &mut seen).await;
+
+        // 8. Netjes afsluiten
+        token.cancel();
+        read_until(&mut reader, "QUIT", &mut seen).await;
+        assert!(client_task.await.unwrap().is_ok());
     }
 
     #[test]

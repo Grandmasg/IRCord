@@ -173,21 +173,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let (inbound_tx, mut inbound_rx) = mpsc::channel::<BridgeMessage>(256);
     let (outbound_irc_tx, outbound_irc_rx) = mpsc::channel::<BridgeMessage>(256);
     let (outbound_irc_raw_tx, outbound_irc_raw_rx) = mpsc::channel::<String>(128);
+    let (discord_post_tx, mut discord_post_rx) = mpsc::channel::<crate::discord::webhook::DiscordPost>(16);
+    let (presence_tx, mut presence_rx) = mpsc::channel::<crate::bridge::PresenceEvent>(64);
+    let (discord_event_tx, mut discord_event_rx) = mpsc::channel::<crate::bridge::DiscordEvent>(64);
 
     let plugins_info = Arc::new(std::sync::RwLock::new(Vec::new()));
+    let plugin_toggles = Arc::new(crate::plugins::toggles::PluginToggles::from_config(&cfg));
+    plugin_toggles.load_db(&pool).await;
     let plugin_ctx = PluginContext {
         db: pool.clone(),
         http: http_client.clone(),
         ai_client: free_token_client.clone(),
         ai_manager: ai_manager.clone(),
         rag: rag_searcher.clone(),
-        vision: vision_helper.clone(),
         config: cfg_arc.clone(),
         error_logger: error_logger.clone(),
         locale: locale_manager.clone(),
         open_meteo_quota: open_meteo_quota.clone(),
         irc_raw_tx: Some(outbound_irc_raw_tx),
         plugins_info: plugins_info.clone(),
+        toggles: plugin_toggles.clone(),
+        discord_post_tx: Some(discord_post_tx),
     };
 
     let mut plugin_mgr = PluginManager::new(plugin_ctx);
@@ -231,6 +237,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     plugin_mgr.register(Box::new(CountdownPlugin::new()));
     plugin_mgr.register(Box::new(VakantiePlugin::new()));
     plugin_mgr.register(Box::new(StatsPlugin));
+    plugin_mgr.register(Box::new(crate::plugins::media::MediaPlugin));
+    plugin_mgr.register(Box::new(crate::plugins::plugin_admin::PluginAdminPlugin));
     plugin_mgr.register(Box::new(TrackPlugin));
 
     info!("Plugin Manager geïnitialiseerd met {} actieve plugins", plugin_mgr.plugin_count());
@@ -279,6 +287,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                         source_channel: m.irc_channel.clone(),
                         author_name: "IRCord".into(),
                         author_id: None,
+                        message_id: None,
                         content: line.clone(),
                         reply_to: None,
                         is_action: false,
@@ -295,6 +304,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         inbound_tx.clone(),
         outbound_irc_rx,
         outbound_irc_raw_rx,
+        if cfg.bridge.sync_presence { Some(presence_tx) } else { None },
         shutdown_token.clone(),
     );
     tokio::spawn(async move {
@@ -308,7 +318,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             | GatewayIntents::MESSAGE_CONTENT
             | GatewayIntents::GUILDS;
 
-        let handler = DiscordHandler::new(cfg_arc.clone(), inbound_tx.clone());
+        let handler = DiscordHandler::new(cfg_arc.clone(), inbound_tx.clone(), discord_event_tx);
         let shutdown_discord = shutdown_token.clone();
 
         tokio::spawn(async move {
@@ -388,6 +398,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                                     source_channel: msg.source_channel.clone(),
                                     author_name: "IRCord".into(),
                                     author_id: None,
+                                    message_id: None,
                                     content: reply,
                                     reply_to: None,
                                     is_action: false,
@@ -448,7 +459,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                                         cfg_arc.general.pastebin_enabled,
                                     ).await;
                                     let formatted = router_clone.format_for_irc(&relay_msg);
-                                    if let Some(ref d_id) = msg.author_id {
+                                    if let Some(ref d_id) = msg.message_id {
                                         router_clone.record_bridge_link(
                                             d_id.clone(),
                                             mapping.irc_channel.clone(),
@@ -461,6 +472,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                                         source_channel: mapping.irc_channel.clone(),
                                         author_name: msg.author_name.clone(),
                                         author_id: msg.author_id.clone(),
+                                        message_id: msg.message_id.clone(),
                                         content: formatted,
                                         reply_to: msg.reply_to.clone(),
                                         is_action: msg.is_action,
@@ -493,6 +505,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                                                             source_channel: irc_dest.clone(),
                                                             author_name: "IRCord".into(),
                                                             author_id: None,
+                                                            message_id: None,
                                                             content: vision_line,
                                                             reply_to: None,
                                                             is_action: false,
@@ -543,6 +556,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                                     source_channel: channel.clone(),
                                     author_name: "IRCord".into(),
                                     author_id: None,
+                                    message_id: None,
                                     content: message.clone(),
                                     reply_to: None,
                                     is_action: false,
@@ -566,6 +580,86 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             }
         }
     });
+
+    // 12b. Synchronisatie van bewerkte/verwijderde Discord-berichten naar IRC
+    {
+        let router = bridge_router.clone();
+        let irc_tx = outbound_irc_tx.clone();
+        tokio::spawn(async move {
+            while let Some(ev) = discord_event_rx.recv().await {
+                let (channel_id, message_id, new_content) = match ev {
+                    crate::bridge::DiscordEvent::Edited { channel_id, message_id, new_content } => (channel_id, message_id, Some(new_content)),
+                    crate::bridge::DiscordEvent::Deleted { channel_id, message_id } => (channel_id, message_id, None),
+                };
+                let Some(mapping) = router.get_irc_destination(channel_id) else { continue };
+                // Alleen berichten die wij zelf naar IRC hebben doorgezet
+                let Some(origin) = router.lookup_irc_by_discord_id(&message_id) else { continue };
+                let text = match &new_content {
+                    Some(c) => {
+                        router.record_bridge_link(message_id.clone(), mapping.irc_channel.clone(), origin.author.clone(), c.clone());
+                        router.format_edit_for_irc(&origin.author, c)
+                    }
+                    None => router.format_delete_for_irc(&origin.author),
+                };
+                let _ = irc_tx.send(BridgeMessage {
+                    source_platform: Platform::Irc,
+                    source_channel: mapping.irc_channel.clone(),
+                    author_name: "IRCord".into(),
+                    author_id: None,
+                    message_id: None,
+                    content: text,
+                    reply_to: None,
+                    is_action: false,
+                }).await;
+            }
+        });
+    }
+
+    // 12d. Bestanden en afbeeldingen van plugins (!img, !upload) naar Discord
+    {
+        let dispatcher = webhook_dispatcher.clone();
+        let channels = cfg.channels.clone();
+        tokio::spawn(async move {
+            while let Some(post) = discord_post_rx.recv().await {
+                let Some(m) = channels.iter().find(|m| m.irc_channel.eq_ignore_ascii_case(&post.irc_channel)) else { continue };
+                let res = match (&post.file, &post.image_url) {
+                    (Some((name, bytes)), _) => dispatcher.send_file(&m.discord_webhook_url, &post.username, &post.content, name, bytes.clone()).await,
+                    (None, Some(url)) => dispatcher.send_image_embed(&m.discord_webhook_url, &post.username, &post.content, url).await,
+                    (None, None) => dispatcher.send_message(&m.discord_webhook_url, &post.username, &post.content).await,
+                };
+                if let Err(e) = res {
+                    warn!("Doorsturen naar Discord mislukt: {}", e);
+                }
+            }
+        });
+    }
+
+    // 12c. IRC join/part/quit naar Discord (met een eenvoudige limiet tegen netsplit-floods)
+    {
+        let router = bridge_router.clone();
+        let dispatcher = webhook_dispatcher.clone();
+        let channels = cfg.channels.clone();
+        tokio::spawn(async move {
+            let mut window_start = std::time::Instant::now();
+            let mut sent_in_window = 0u32;
+            while let Some(ev) = presence_rx.recv().await {
+                if window_start.elapsed() > Duration::from_secs(10) {
+                    window_start = std::time::Instant::now();
+                    sent_in_window = 0;
+                }
+                if sent_in_window >= 10 {
+                    continue;
+                }
+                let Some((chan, text)) = router.format_presence_for_discord(&ev) else { continue };
+                // Zonder bekend kanaal (QUIT) is er niets om naartoe te sturen
+                let Some(chan) = chan else { continue };
+                if let Some(m) = channels.iter().find(|m| m.irc_channel.eq_ignore_ascii_case(&chan)) {
+                    sent_in_window += 1;
+                    let _ = dispatcher.send_message(&m.discord_webhook_url, "IRC", &text).await;
+                }
+            }
+        });
+    }
 
     // 13. Achtergrondtaak: Periodieke RSS Feeds Monitor (elke 10 minuten)
     let rss_pool = pool.clone();
@@ -596,6 +690,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                             source_channel: channel.clone(),
                             author_name: "IRCord".into(),
                             author_id: None,
+                            message_id: None,
                             content: message.clone(),
                             reply_to: None,
                             is_action: false,
@@ -647,6 +742,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                                         source_channel: channel.clone(),
                                         author_name: "IRCord".into(),
                                         author_id: None,
+                                        message_id: None,
                                         content: message.clone(),
                                         reply_to: None,
                                         is_action: false,

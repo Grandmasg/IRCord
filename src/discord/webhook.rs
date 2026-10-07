@@ -12,6 +12,19 @@ struct WebhookPayload<'a> {
     avatar_url: Option<&'a str>,
 }
 
+/// Een verzoek van een plugin om iets naar het gekoppelde Discord-kanaal te sturen.
+#[derive(Debug, Clone)]
+pub struct DiscordPost {
+    /// IRC-kanaal waarvan we de gekoppelde Discord-webhook opzoeken
+    pub irc_channel: String,
+    pub username: String,
+    pub content: String,
+    /// Bestand om als bijlage te uploaden (bestandsnaam, inhoud)
+    pub file: Option<(String, Vec<u8>)>,
+    /// Afbeeldings-URL om als embed te tonen
+    pub image_url: Option<String>,
+}
+
 pub struct WebhookDispatcher {
     http: Client,
 }
@@ -26,6 +39,42 @@ impl WebhookDispatcher {
     /// Verstuurt een chatbericht naar een Discord Webhook met optionele avatar
     pub async fn send_message(&self, webhook_url: &str, username: &str, content: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         self.send_message_with_avatar(webhook_url, username, content, None).await
+    }
+
+    /// Verstuurt een bericht met een afbeelding-embed (Discord haalt de afbeelding zelf op).
+    pub async fn send_image_embed(&self, webhook_url: &str, username: &str, content: &str, image_url: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let payload = serde_json::json!({
+            "username": username,
+            "content": content,
+            "embeds": [{ "image": { "url": image_url } }],
+        });
+        let resp = self.http.post(webhook_url).json(&payload).send().await?;
+        if resp.status().is_success() {
+            Ok(())
+        } else {
+            Err(format!("Webhook fout {}", resp.status()).into())
+        }
+    }
+
+    /// Uploadt een bestand als bijlage via de webhook (multipart), met retry bij 429.
+    pub async fn send_file(&self, webhook_url: &str, username: &str, content: &str, filename: &str, bytes: Vec<u8>) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        for attempt in 0..3u32 {
+            let payload = serde_json::json!({ "username": username, "content": content }).to_string();
+            let form = reqwest::multipart::Form::new()
+                .text("payload_json", payload)
+                .part("files[0]", reqwest::multipart::Part::bytes(bytes.clone()).file_name(filename.to_string()));
+            let resp = self.http.post(webhook_url).multipart(form).send().await?;
+            if resp.status().is_success() {
+                return Ok(());
+            }
+            if resp.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
+                let wait = resp.headers().get("retry-after").and_then(|h| h.to_str().ok()).and_then(|s| s.parse::<f64>().ok()).unwrap_or(1.0 * 2f64.powi(attempt as i32));
+                sleep(Duration::from_millis((wait * 1000.0) as u64)).await;
+                continue;
+            }
+            return Err(format!("Webhook bestandsupload fout {}", resp.status()).into());
+        }
+        Err("Discord bestandsupload mislukt na 3 pogingen".into())
     }
 
     /// Verstuurt een chatbericht naar een Discord Webhook met automatische 429 backoff retry en optionele profielfoto
