@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
-use tracing::{debug, info, warn};
+use tracing::{info, warn};
 
 #[derive(Debug, Deserialize, Default)]
 struct LanguageDetectionConfig {
@@ -45,6 +45,7 @@ const EMBEDDED_EN: &str = include_str!("../../locales/en.toml");
 const EMBEDDED_DE: &str = include_str!("../../locales/de.toml");
 const EMBEDDED_FR: &str = include_str!("../../locales/fr.toml");
 const EMBEDDED_ES: &str = include_str!("../../locales/es.toml");
+const EMBEDDED_ZH: &str = include_str!("../../locales/zh.toml");
 
 impl LocaleManager {
     /// Loads all locale files from the specified directory (defaults to "locales")
@@ -63,6 +64,7 @@ impl LocaleManager {
             ("de", EMBEDDED_DE),
             ("fr", EMBEDDED_FR),
             ("es", EMBEDDED_ES),
+            ("zh", EMBEDDED_ZH),
         ] {
             if let Ok(loc_file) = toml::from_str::<LocaleFile>(content) {
                 for (canonical, aliases) in loc_file.aliases {
@@ -204,6 +206,7 @@ impl LocaleManager {
             "nl" | "nederlands" | "dutch" => Some("nl"),
             "en" | "engels" | "english" => Some("en"),
             "de" | "duits" | "deutsch" | "german" => Some("de"),
+            "zh" | "chinees" | "chinese" | "中文" | "汉语" | "漢語" => Some("zh"),
             other => {
                 self.available_languages.iter().find(|l| l.as_str() == other).map(|s| s.as_str())
             }
@@ -362,6 +365,33 @@ impl LocaleManager {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn chinese_locale_loads_and_resolves() {
+        let loc = LocaleManager::load("locales", "zh");
+        assert_eq!(loc.language(), "zh");
+        assert_eq!(loc.t("weather_title"), "天气");
+        assert_eq!(loc.tf("karma_score", &[("target", "x"), ("score", "3")]), "[Karma] x 的得分是 3");
+    }
+
+    /// Elke taal moet dezelfde bericht-sleutels hebben als het Engels (anders valt de gebruiker terug op het Engels).
+    #[test]
+    fn all_locales_have_complete_messages() {
+        let load = |code: &str| -> toml::Value {
+            let raw = std::fs::read_to_string(format!("locales/{}.toml", code)).unwrap();
+            toml::from_str(&raw).unwrap_or_else(|e| panic!("locales/{}.toml is geen geldige TOML: {}", code, e))
+        };
+        let keys = |v: &toml::Value| -> std::collections::BTreeSet<String> {
+            v["messages"].as_table().unwrap().keys().cloned().collect()
+        };
+        let en = keys(&load("en"));
+        for code in ["nl", "de", "fr", "es", "zh"] {
+            let lang = keys(&load(code));
+            let missing: Vec<_> = en.difference(&lang).collect();
+            assert!(missing.is_empty(), "{} mist vertalingen: {:?}", code, missing);
+        }
+    }
+
 
     #[test]
     fn test_locale_manager_dutch() {

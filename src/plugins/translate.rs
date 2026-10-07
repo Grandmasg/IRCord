@@ -1,8 +1,9 @@
 use super::{CommandEvent, MessageEvent, Plugin, PluginContext};
 use crate::utils::i18n::LocaleManager;
+use crate::utils::langdetect;
 use async_trait::async_trait;
 use serde::Deserialize;
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
@@ -16,13 +17,35 @@ struct ChannelSettingsCache {
 
 pub struct TranslatePlugin {
     channel_cache: Mutex<HashMap<String, ChannelSettingsCache>>,
+    /// Per kanaal+nick: laatste berichten, true = in de kanaaltaal geschreven.
+    nick_history: Mutex<HashMap<String, VecDeque<bool>>>,
 }
 
 impl TranslatePlugin {
     pub fn new() -> Self {
         Self {
             channel_cache: Mutex::new(HashMap::new()),
+            nick_history: Mutex::new(HashMap::new()),
         }
+    }
+
+    /// Registreert of dit bericht in de kanaaltaal was en geeft terug of de nick tot dan toe
+    /// vrijwel altijd in de kanaaltaal schreef (dan hanteren we een strengere drempel).
+    fn note_and_check_resident(&self, channel: &str, nick: &str, in_channel_lang: bool) -> bool {
+        const WINDOW: usize = 5;
+        const RESIDENT_MIN: usize = 3;
+        let key = format!("{}/{}", channel.to_lowercase(), nick.to_lowercase());
+        let mut map = self.nick_history.lock().unwrap();
+        if map.len() > 2000 {
+            map.clear();
+        }
+        let hist = map.entry(key).or_default();
+        let resident = hist.iter().filter(|b| **b).count() >= RESIDENT_MIN;
+        hist.push_back(in_channel_lang);
+        if hist.len() > WINDOW {
+            hist.pop_front();
+        }
+        resident
     }
 
     async fn get_channel_settings(&self, ctx: &PluginContext, platform: &str, channel: &str) -> ChannelSettingsCache {
@@ -110,6 +133,69 @@ struct MyMemoryData {
     translated_text: Option<String>,
 }
 
+/// DeepL doeltaalcodes: "EN" en "PT" zijn als doeltaal verouderd en vragen een variant.
+fn deepl_target_code(code: &str) -> String {
+    match code.to_ascii_uppercase().as_str() {
+        "EN" => "EN-GB".to_string(),
+        "PT" => "PT-PT".to_string(),
+        other => other.to_string(),
+    }
+}
+
+/// Vertaalt via de officiële DeepL API v2 (https://developers.deepl.com/docs/getting-started/your-first-api-request).
+/// Geeft `(gedetecteerde brontaal, vertaling)` terug, of `None` zonder sleutel, bij quota/fouten.
+async fn deepl_translate(
+    ctx: &PluginContext,
+    text: &str,
+    target: &str,
+    source: Option<&str>,
+) -> Option<(String, String)> {
+    let key = std::env::var("DEEPL_API_KEY").ok()?;
+    let key = key.trim();
+    if key.is_empty() {
+        return None;
+    }
+    let endpoint = if key.ends_with(":fx") {
+        "https://api-free.deepl.com/v2/translate"
+    } else {
+        "https://api.deepl.com/v2/translate"
+    };
+    let mut body = serde_json::json!({ "text": [text], "target_lang": deepl_target_code(target) });
+    if let Some(src) = source {
+        body["source_lang"] = serde_json::json!(src.to_ascii_uppercase());
+    }
+
+    #[derive(Deserialize)]
+    struct Resp {
+        translations: Vec<Item>,
+    }
+    #[derive(Deserialize)]
+    struct Item {
+        #[serde(default)]
+        detected_source_language: String,
+        text: String,
+    }
+
+    let resp = ctx
+        .http
+        .post(endpoint)
+        .header("Authorization", format!("DeepL-Auth-Key {}", key))
+        .header("User-Agent", "IRCordBot/1.0 (translation client)")
+        .timeout(Duration::from_secs(8))
+        .json(&body)
+        .send()
+        .await
+        .ok()?;
+    if !resp.status().is_success() {
+        // 456 = quota op; 429 = te veel verzoeken. In beide gevallen terugvallen op de AI.
+        tracing::warn!("DeepL gaf status {}", resp.status());
+        return None;
+    }
+    let data = resp.json::<Resp>().await.ok()?;
+    let item = data.translations.into_iter().next()?;
+    Some((item.detected_source_language.to_uppercase(), item.text.trim().to_string()))
+}
+
 fn resolve_lang(input: &str) -> Option<(String, String)> {
     let s = input.trim().to_lowercase();
     let res = match s.as_str() {
@@ -179,6 +265,7 @@ pub struct LanguageScore {
     pub total_words: usize,
 }
 
+#[allow(dead_code)]
 impl LanguageScore {
     pub fn is_likely_dutch(&self) -> bool {
         if self.dutch_count == 0 {
@@ -250,6 +337,7 @@ pub fn contains_non_latin_script(text: &str) -> bool {
 }
 
 /// Berekent de relatieve taalpercentages (Nederlands, Engels, Duits, Frans, Spaans) voor een chatbericht
+#[allow(dead_code)]
 pub fn calculate_language_percentages(text: &str) -> LanguageScore {
     calculate_language_percentages_with_locale(text, None)
 }
@@ -535,56 +623,11 @@ impl Plugin for TranslatePlugin {
         let deepl_label = "DeepL";
         let web_label = ctx.locale.t("web_translation_title");
 
-        // 1. Check officiële DeepL API v2 indien DEEPL_API_KEY is ingesteld
-        if let Ok(key) = std::env::var("DEEPL_API_KEY") {
-            let key = key.trim();
-            if !key.is_empty() {
-                let endpoint = if key.ends_with(":fx") {
-                    "https://api-free.deepl.com/v2/translate"
-                } else {
-                    "https://api.deepl.com/v2/translate"
-                };
-
-                let mut body = serde_json::json!({
-                    "text": [text_to_translate],
-                    "target_lang": to_code,
-                });
-
-                if from_code != "AUTO" {
-                    body["source_lang"] = serde_json::json!(from_code);
-                }
-
-                if let Ok(resp) = ctx
-                    .http
-                    .post(endpoint)
-                    .header("Authorization", format!("DeepL-Auth-Key {}", key))
-                    .header("User-Agent", "IRCordBot/1.0 (translation client)")
-                    .json(&body)
-                    .send()
-                    .await
-                {
-                    if resp.status().is_success() {
-                        #[derive(Deserialize)]
-                        struct DeepLResponse {
-                            translations: Vec<DeepLItem>,
-                        }
-                        #[derive(Deserialize)]
-                        struct DeepLItem {
-                            text: String,
-                        }
-
-                        if let Ok(data) = resp.json::<DeepLResponse>().await {
-                            if let Some(item) = data.translations.first() {
-                                return Ok(Some(format!(
-                                    "🌐 [{} -> {}] {}",
-                                    deepl_label,
-                                    to_code,
-                                    item.text.trim()
-                                )));
-                            }
-                        }
-                    }
-                }
+        // 1. Officiële DeepL API v2 indien DEEPL_API_KEY is ingesteld
+        let deepl_source = if from_code == "AUTO" { None } else { Some(from_code.as_str()) };
+        if let Some((_, translated)) = deepl_translate(ctx, text_to_translate, &to_code, deepl_source).await {
+            if !translated.is_empty() {
+                return Ok(Some(format!("🌐 [{} -> {}] {}", deepl_label, to_code, translated)));
             }
         }
 
@@ -676,19 +719,18 @@ impl Plugin for TranslatePlugin {
 
         let has_foreign_script = contains_non_latin_script(trimmed);
         let char_count = trimmed.chars().count();
-        let word_count = trimmed.split_whitespace().count();
 
-        // Voor niet-Latijns schrift (Chinees, Japans, etc.): deze talen gebruiken geen spaties tussen woorden.
-        // Minstens 2 karakters is al een volwaardige zin (bijv. "你好", "这是一个测试句子。").
+        // Ruis (nicks, releasecodes zoals S03E10, emoticons, afkortingen) telt niet mee.
+        let cleaned = langdetect::clean_for_detection(trimmed);
+
+        // Niet-Latijns schrift gebruikt geen spaties tussen woorden: 2 tekens is al genoeg.
+        // Latijns schrift: minstens 4 echte woorden, anders is taaldetectie te onbetrouwbaar.
         if has_foreign_script {
             if char_count < 2 {
                 return Ok(None);
             }
-        } else {
-            // Voor Latijns schrift (NL, EN, DE, FR, etc.): minstens 3 woorden en 12 tekens om korte kreten ("ok", "ja ja") te negeren
-            if word_count < 3 || char_count < 12 {
-                return Ok(None);
-            }
+        } else if langdetect::word_count(&cleaned) < 4 || cleaned.chars().count() < 15 {
+            return Ok(None);
         }
 
         // 3. Filter alledaagse IRC slang en computer-leenwoorden (centraal beheerd in locales)
@@ -702,44 +744,34 @@ impl Plugin for TranslatePlugin {
             return Ok(None);
         }
 
-        // 5. Relatieve taalpercentages berekenen (centraal uit LocaleManager en niet-Latijns schrift)
-        let scores = calculate_language_percentages_with_locale(trimmed, Some(&ctx.locale));
-        tracing::debug!(
-            "🌐 [Taalpercentages] input='{}' ➔ NL: {:.1}% ({} hits), EN: {:.1}% ({} hits), DE: {:.1}%, FR: {:.1}%, ES: {:.1}%, non-latin={} van {} woorden",
-            trimmed, scores.dutch_pct, scores.dutch_count, scores.english_pct, scores.english_count,
-            scores.german_pct, scores.french_pct, scores.spanish_pct, has_foreign_script, scores.total_words
-        );
-
-        // Filteren op basis van de ingestelde kanaaltaal:
-        if settings.language_code.eq_ignore_ascii_case("NL") {
-            // A. Als het Nederlands is (inclusief leenwoorden): direct overslaan!
-            if scores.is_likely_dutch() {
+        // 5. Taaldetectie (offline n-grammen). Alleen vertalen bij een overtuigend vreemde taal;
+        // is de kanaaltaal ook maar enigszins waarschijnlijk, dan doen we niets.
+        let channel_lang = langdetect::language_from_code(&settings.language_code);
+        let mut detected: Option<langdetect::Detection> = None;
+        if !has_foreign_script {
+            let Some(d) = langdetect::detect(&cleaned, channel_lang) else {
+                return Ok(None);
+            };
+            let resident = self.note_and_check_resident(&msg.channel, &msg.author, d.looks_like_channel_language(channel_lang));
+            let min_conf = if resident {
+                langdetect::MIN_FOREIGN_CONFIDENCE_RESIDENT
+            } else {
+                langdetect::MIN_FOREIGN_CONFIDENCE
+            };
+            tracing::debug!(
+                "🌐 [Taaldetectie] input='{}' ➔ top={} ({:.2}), kanaaltaal={:.2}, resident={}, drempel={:.2}",
+                cleaned, langdetect::code_of(d.top), d.top_confidence, d.channel_confidence, resident, min_conf
+            );
+            if !d.is_confidently_foreign(channel_lang, min_conf) {
                 return Ok(None);
             }
-
-            // B. Bericht moet overtuigend een buitenlandse taal zijn als er al Nederlandse woorden in voorkomen.
-            // Als er 0 Nederlandse woorden in staan (dutch_count == 0), laten we de AI de taal bepalen (zoals Frans, Italiaans, etc.)!
-            if !scores.is_foreign_to_dutch() && !has_foreign_script && scores.dutch_count > 0 && scores.total_words < 6 {
+            // Extra veto: de woordenlijst-heuristiek ziet het wél als Nederlands.
+            if settings.language_code.eq_ignore_ascii_case("NL")
+                && calculate_language_percentages_with_locale(trimmed, Some(&ctx.locale)).is_likely_dutch()
+            {
                 return Ok(None);
             }
-        } else if settings.language_code.eq_ignore_ascii_case("EN") {
-            // Kanaal is Engels: als het Engels is -> overslaan!
-            if scores.is_likely_english() || (scores.total_words <= 5 && scores.english_count >= 1) || scores.english_pct >= 15.0 {
-                return Ok(None);
-            }
-
-            if !scores.is_foreign_to_english() && !has_foreign_script && scores.english_count > 0 && scores.total_words < 6 {
-                return Ok(None);
-            }
-        } else if settings.language_code.eq_ignore_ascii_case("DE") {
-            // Kanaal is Duits: als het Duits is -> overslaan!
-            if scores.is_likely_german() || (scores.total_words <= 5 && scores.german_count >= 1) || scores.german_pct >= 15.0 {
-                return Ok(None);
-            }
-
-            if !scores.is_likely_dutch() && !scores.is_likely_english() && !scores.is_likely_french() && !has_foreign_script && scores.german_count > 0 && scores.total_words < 6 {
-                return Ok(None);
-            }
+            detected = Some(d);
         }
 
         // 6. Cooldown per kanaal (6 seconden) om AI-overbelasting bij snelle chat te voorkomen
@@ -747,25 +779,38 @@ impl Plugin for TranslatePlugin {
             return Ok(None);
         }
 
-        // 7. Beoordeel met lokale Ollama AI of het bericht afwijkt van de kanaaltaal
+        // 7a. Officiële DeepL API (indien sleutel): geeft ook de gedetecteerde brontaal terug.
+        // Meldt DeepL dat de tekst al in de kanaaltaal is, dan doen we niets.
+        if !has_foreign_script || std::env::var("DEEPL_API_KEY").map(|k| !k.trim().is_empty()).unwrap_or(false) {
+            if let Some((src, translated)) = deepl_translate(ctx, trimmed, &settings.language_code, None).await {
+                let same_lang = src.eq_ignore_ascii_case(&settings.language_code);
+                let expected_ok = detected
+                    .as_ref()
+                    .map(|d| src.eq_ignore_ascii_case(langdetect::code_of(d.top)))
+                    .unwrap_or(true);
+                if same_lang || !expected_ok || translated.is_empty() || langdetect::is_near_identical(trimmed, &translated) {
+                    return Ok(None);
+                }
+                return Ok(Some(format!(
+                    "🌐 [{} ➔ {}] \x02{}\x02: {}",
+                    src,
+                    settings.language_code.to_uppercase(),
+                    msg.author,
+                    translated
+                )));
+            }
+        }
+
+        // 7b. Beoordeel met lokale Ollama AI of het bericht afwijkt van de kanaaltaal
         let current_model = ctx.ai_manager.get_model();
         if !ctx.ai_manager.can_consume(50) {
             return Ok(None);
         }
 
-        // Bepaal de verwachte brontaal op basis van Rust heuristiek
-        let (expected_lang_code, detected_lang_hint) = if has_foreign_script {
-            ("AUTO", "non-Latin (Chinese/Japanese/Russian/etc.)")
-        } else if scores.is_likely_french() {
-            ("FR", "French")
-        } else if scores.is_likely_spanish() {
-            ("ES", "Spanish")
-        } else if scores.is_likely_german() {
-            ("DE", "German")
-        } else if scores.is_likely_english() {
-            ("EN", "English")
-        } else {
-            ("AUTO", "foreign")
+        // Verwachte brontaal volgens de detector (tweede stem: de AI moet het hiermee eens zijn)
+        let (expected_lang_code, detected_lang_hint) = match &detected {
+            Some(d) => (langdetect::code_of(d.top), langdetect::name_of(d.top)),
+            None => ("AUTO", "non-Latin (Chinese/Japanese/Russian/etc.)"),
         };
 
         // System prompt:
@@ -831,10 +876,12 @@ impl Plugin for TranslatePlugin {
 
             if let Some((tag, trans)) = parsed {
                 // Als de vertaling niet leeg is en niet "NONE", en tag is niet de kanaaltaal:
+                let agrees = expected_lang_code == "AUTO" || tag.eq_ignore_ascii_case(expected_lang_code);
                 if !trans.is_empty()
                     && !trans.eq_ignore_ascii_case("NONE")
                     && !tag.eq_ignore_ascii_case(&settings.language_code)
-                    && !trans.eq_ignore_ascii_case(trimmed)
+                    && agrees
+                    && !langdetect::is_near_identical(trimmed, &trans)
                 {
                     final_result = Some((tag, trans));
                 }
@@ -842,7 +889,7 @@ impl Plugin for TranslatePlugin {
         }
 
         // Fallback: als de classificatie-evaluatie "NONE" of "FR NONE" opleverde, maar Rust WEET dat het een buitenlands bericht is:
-        if final_result.is_none() && (has_foreign_script || scores.is_foreign_to_dutch()) {
+        if final_result.is_none() && has_foreign_script {
             tracing::info!("🌐 [Auto-Translate Fallback] Rust detecteerde vreemde taal ({}), directe vertaling aanvragen...", detected_lang_hint);
             let direct_prompt = format!(
                 "You are a professional translator. Translate the following text directly into {} (from {}). Output ONLY the direct translated text in {}, without quotes, explanations, or notes:\n\n{}",
@@ -850,14 +897,8 @@ impl Plugin for TranslatePlugin {
             );
             if let Ok(Ok(reply)) = tokio::time::timeout(Duration::from_secs(8), ctx.ai_client.ask("Translator", &direct_prompt, Some(&current_model))).await {
                 let clean = reply.trim().trim_matches('"').trim();
-                if !clean.is_empty() && !clean.eq_ignore_ascii_case("NONE") && !clean.eq_ignore_ascii_case(trimmed) {
-                    let tag = if expected_lang_code != "AUTO" {
-                        expected_lang_code.to_string()
-                    } else if has_foreign_script {
-                        "ZH/JA".to_string()
-                    } else {
-                        "?".to_string()
-                    };
+                if !clean.is_empty() && !clean.eq_ignore_ascii_case("NONE") && !langdetect::is_near_identical(trimmed, clean) {
+                    let tag = "?".to_string();
                     final_result = Some((tag, clean.to_string()));
                 }
             }
@@ -884,6 +925,13 @@ impl Plugin for TranslatePlugin {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_deepl_target_codes() {
+        assert_eq!(deepl_target_code("en"), "EN-GB");
+        assert_eq!(deepl_target_code("PT"), "PT-PT");
+        assert_eq!(deepl_target_code("nl"), "NL");
+    }
 
     #[test]
     fn test_language_percentages() {
@@ -923,6 +971,16 @@ mod tests {
         assert!(s_es.spanish_count >= 3);
         assert!(s_es.is_likely_spanish());
         assert!(s_es.is_foreign_to_dutch());
+    }
+
+    #[test]
+    fn test_resident_nick_gets_stricter_threshold() {
+        let plugin = TranslatePlugin::new();
+        for _ in 0..3 {
+            plugin.note_and_check_resident("#chan", "PjoT", true);
+        }
+        assert!(plugin.note_and_check_resident("#chan", "pjot", true));
+        assert!(!plugin.note_and_check_resident("#chan", "newbie", false));
     }
 
     #[test]

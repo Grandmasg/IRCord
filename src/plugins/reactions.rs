@@ -69,7 +69,7 @@ impl Plugin for ReactionsPlugin {
         if let Some(category) = detect_greeting(trimmed, &bot_nick) {
             match category {
                 GreetingCategory::Morning => {
-                    if self.check_and_set_cooldown(&msg.channel, "morning", 300) {
+                    if self.check_and_set_cooldown(&msg.channel, "morning", 120) {
                         let reply = if is_dutch {
                             format!("Goedemorgen \x02{}\x02! ☕ Fijne dag gewenst!", msg.author)
                         } else {
@@ -79,7 +79,7 @@ impl Plugin for ReactionsPlugin {
                     }
                 }
                 GreetingCategory::Evening => {
-                    if self.check_and_set_cooldown(&msg.channel, "evening", 300) {
+                    if self.check_and_set_cooldown(&msg.channel, "evening", 120) {
                         let reply = if is_dutch {
                             format!("Goedenavond \x02{}\x02! 🌆 Gezellige avond gewenst.", msg.author)
                         } else {
@@ -89,7 +89,7 @@ impl Plugin for ReactionsPlugin {
                     }
                 }
                 GreetingCategory::Night => {
-                    if self.check_and_set_cooldown(&msg.channel, "night", 300) {
+                    if self.check_and_set_cooldown(&msg.channel, "night", 120) {
                         let reply = if is_dutch {
                             format!("Welterusten \x02{}\x02! 🌙 Slaap lekker.", msg.author)
                         } else {
@@ -107,8 +107,7 @@ impl Plugin for ReactionsPlugin {
         let bot_clean = bot_nick.to_lowercase();
         if (lower.contains("bot") || lower.contains("ircord") || (!bot_clean.is_empty() && lower.contains(&bot_clean)))
             && (lower.starts_with("hallo") || lower.starts_with("hoi") || lower.starts_with("hey") || lower.starts_with("hi "))
-        {
-            if self.check_and_set_cooldown(&msg.channel, "hello", 120) {
+            && self.check_and_set_cooldown(&msg.channel, "hello", 60) {
                 let reply = if is_dutch {
                     format!("Hoi \x02{}\x02! 👋 Alles goed?", msg.author)
                 } else {
@@ -116,7 +115,6 @@ impl Plugin for ReactionsPlugin {
                 };
                 return Ok(Some(reply));
             }
-        }
 
         // 5. Juichen / Blijdschap (\o/, woei, hoera, yay, etc.)
         let is_cheer = trimmed.contains("\\o/")
@@ -131,20 +129,21 @@ impl Plugin for ReactionsPlugin {
             || lower.contains("*juicht*")
             || lower.contains("*feest*");
 
-        if is_cheer {
-            if self.check_and_set_cooldown(&msg.channel, "cheer", 20) {
+        if is_cheer
+            && self.check_and_set_cooldown(&msg.channel, "cheer", 8) {
                 // Probeer eerst AI voor een grappige, dynamische reactie
                 let current_model = ctx.ai_manager.get_model();
                 if ctx.ai_manager.can_consume(40) {
-                    let prompt = format!(
-                        "Iemand in een gezellig Nederlands IRC-kanaal ({}) juicht zojuist enthousiast met '\\o/' of 'WOEI!'. Bedenk als gevatte bot een ultrakorte, energieke, grappige reactie van maximaal 5 woorden om mee te juichen (zoals 'WOEI! \\o/', 'Biertje erbij! 🍻 \\o/', 'Hieperdepiep! 🎉', 'Jaaaa hype! \\o/'). Geef UITSLUITEND de reactie zonder aanhalingstekens of uitleg:\n{}",
-                        msg.author, msg.content
-                    );
+                    let system_prompt = r#"Je bent een gevatte, vrolijke bot in een gezellig Nederlands IRC-kanaal. Iemand juicht (bijv. met '\o/' of 'WOEI!') over iets in zijn bericht. Bedenk een korte, grappige reactie van maximaal 8 woorden die BIJ HET ONDERWERP van het bericht past (bijv. bij onweer: 'Bliksemsnel feestje! \o/ ⚡', bij een nieuwe release: 'Eindelijk! Taart erbij! 🍰'). Herhaal het bericht NOOIT letterlijk en citeer het niet. Geef UITSLUITEND de reactie, zonder aanhalingstekens of uitleg."#;
+                    let user_prompt = format!("Bericht van {}: {}", msg.author, msg.content);
 
-                    let ask_fut = ctx.ai_client.ask("CheerBot", &prompt, Some(&current_model));
+                    let ask_fut = ctx.ai_client.ask_with_system(system_prompt, "CheerBot", &user_prompt, Some(&current_model));
                     if let Ok(Ok(ai_reply)) = tokio::time::timeout(Duration::from_secs(6), ask_fut).await {
                         let clean = ai_reply.trim().trim_matches('"').trim();
-                        if !clean.is_empty() && clean.len() <= 60 {
+                        // Echo of bijna-echo van het originele bericht is irritant: dan liever de fallback.
+                        let is_echo = crate::utils::langdetect::similarity(clean, trimmed) >= 0.6
+                            || lower.contains(&clean.to_lowercase());
+                        if !clean.is_empty() && clean.chars().count() <= 80 && !is_echo {
                             ctx.ai_manager.record_consumption(30);
                             return Ok(Some(clean.to_string()));
                         }
@@ -169,35 +168,31 @@ impl Plugin for ReactionsPlugin {
                     % fallbacks.len();
                 return Ok(Some(fallbacks[idx].to_string()));
             }
-        }
 
         // 6. High-five / Zwaaien (o/ of \o)
         if trimmed == "o/" || trimmed == "O/" {
-            if self.check_and_set_cooldown(&msg.channel, "wave", 25) {
+            if self.check_and_set_cooldown(&msg.channel, "wave", 10) {
                 return Ok(Some("\\o".to_string()));
             }
-        } else if trimmed == "\\o" || trimmed == "\\O" {
-            if self.check_and_set_cooldown(&msg.channel, "wave", 25) {
+        } else if (trimmed == "\\o" || trimmed == "\\O")
+            && self.check_and_set_cooldown(&msg.channel, "wave", 10) {
                 return Ok(Some("o/".to_string()));
             }
-        }
 
         // 7. Table flip: (╯°□°)╯︵ ┻━┻ of ┻━┻
-        if trimmed.contains("┻━┻") {
-            if self.check_and_set_cooldown(&msg.channel, "tableflip", 30) {
+        if trimmed.contains("┻━┻")
+            && self.check_and_set_cooldown(&msg.channel, "tableflip", 15) {
                 return Ok(Some(format!(
                     "┬─┬ノ( º _ ºノ) Rustig maar \x02{}\x02, niet met de meubels gooien!",
                     msg.author
                 )));
             }
-        }
 
         // 8. Shrug: ¯\_(ツ)_/¯
-        if trimmed.contains("¯\\_(ツ)_/¯") {
-            if self.check_and_set_cooldown(&msg.channel, "shrug", 30) {
+        if trimmed.contains("¯\\_(ツ)_/¯")
+            && self.check_and_set_cooldown(&msg.channel, "shrug", 15) {
                 return Ok(Some("¯\\_(ツ)_/¯ Het is wat het is!".to_string()));
             }
-        }
 
         Ok(None)
     }
@@ -256,8 +251,7 @@ pub(crate) fn detect_greeting(text: &str, bot_nick: &str) -> Option<GreetingCate
 
     let check_list = |prefixes: &[&'static str], cat: GreetingCategory| -> Option<(GreetingCategory, &str)> {
         for &prefix in prefixes {
-            if lower.starts_with(prefix) {
-                let rest = &lower[prefix.len()..];
+            if let Some(rest) = lower.strip_prefix(prefix) {
                 // Word boundary check: volgend karakter mag geen alfanumeriek teken zijn
                 if let Some(ch) = rest.chars().next() {
                     if ch.is_alphanumeric() {

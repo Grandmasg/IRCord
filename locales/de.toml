@@ -199,3 +199,6 @@ distinct_words = [
     "warum", "wie", "wo", "wann", "wer", "was", "wohin", "woher",
     "bitte", "danke", "guten", "hallo", "tschüss", "tschuess", "hilfe", "deutsch", "deutschland"
 ]
+casual_banter = [
+    "ja", "nein", "danke", "hallo", "tschüss", "moin", "lol", "omg", "wtf", "afk", "brb", "gg"
+]
