@@ -10,6 +10,13 @@ struct WebhookPayload<'a> {
     content: &'a str,
     #[serde(skip_serializing_if = "Option::is_none")]
     avatar_url: Option<&'a str>,
+    allowed_mentions: serde_json::Value,
+}
+
+/// Standaard pingt een webhook niemand: `@everyone`, `@here` en rol-mentions vanaf IRC worden platte tekst.
+/// Alleen expliciet opgegeven gebruikers-ID's (gekoppelde accounts) mogen gepingd worden.
+pub fn allowed_mentions(user_ids: &[String]) -> serde_json::Value {
+    serde_json::json!({ "parse": [], "users": user_ids })
 }
 
 /// Een verzoek van een plugin om iets naar het gekoppelde Discord-kanaal te sturen.
@@ -47,6 +54,7 @@ impl WebhookDispatcher {
             "username": username,
             "content": content,
             "embeds": [{ "image": { "url": image_url } }],
+            "allowed_mentions": allowed_mentions(&[]),
         });
         let resp = self.http.post(webhook_url).json(&payload).send().await?;
         if resp.status().is_success() {
@@ -59,7 +67,7 @@ impl WebhookDispatcher {
     /// Uploadt een bestand als bijlage via de webhook (multipart), met retry bij 429.
     pub async fn send_file(&self, webhook_url: &str, username: &str, content: &str, filename: &str, bytes: Vec<u8>) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         for attempt in 0..3u32 {
-            let payload = serde_json::json!({ "username": username, "content": content }).to_string();
+            let payload = serde_json::json!({ "username": username, "content": content, "allowed_mentions": allowed_mentions(&[]) }).to_string();
             let form = reqwest::multipart::Form::new()
                 .text("payload_json", payload)
                 .part("files[0]", reqwest::multipart::Part::bytes(bytes.clone()).file_name(filename.to_string()));
@@ -77,7 +85,7 @@ impl WebhookDispatcher {
         Err("Discord bestandsupload mislukt na 3 pogingen".into())
     }
 
-    /// Verstuurt een chatbericht naar een Discord Webhook met automatische 429 backoff retry en optionele profielfoto
+    /// Verstuurt een chatbericht met optionele profielfoto (niemand wordt gepingd).
     pub async fn send_message_with_avatar(
         &self,
         webhook_url: &str,
@@ -85,17 +93,33 @@ impl WebhookDispatcher {
         content: &str,
         avatar_url: Option<&str>,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        let payload = WebhookPayload { username, content, avatar_url };
+        self.send_relay(webhook_url, username, content, avatar_url, &[]).await.map(|_| ())
+    }
+
+    /// Verstuurt een chatbericht met 429-backoff, optionele avatar en een lijst gebruikers die mogen worden gepingd.
+    /// Geeft het Discord-bericht-ID terug (`?wait=true`), zodat bewerkingen, reacties en replies gekoppeld kunnen worden.
+    pub async fn send_relay(
+        &self,
+        webhook_url: &str,
+        username: &str,
+        content: &str,
+        avatar_url: Option<&str>,
+        mention_user_ids: &[String],
+    ) -> Result<Option<String>, Box<dyn std::error::Error + Send + Sync>> {
+        let payload = WebhookPayload { username, content, avatar_url, allowed_mentions: allowed_mentions(mention_user_ids) };
         let max_retries = 3;
 
         for attempt in 0..max_retries {
             let resp = self.http.post(webhook_url)
+                .query(&[("wait", "true")])
                 .json(&payload)
                 .send()
                 .await?;
 
             if resp.status().is_success() {
-                return Ok(());
+                let id = resp.json::<serde_json::Value>().await.ok()
+                    .and_then(|v| v.get("id").and_then(|i| i.as_str()).map(str::to_string));
+                return Ok(id);
             }
 
             if resp.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
@@ -119,6 +143,21 @@ impl WebhookDispatcher {
         }
 
         Err("Discord webhook verzending mislukt na 3 pogingen".into())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn mentions_are_disabled_except_for_listed_users() {
+        let none = allowed_mentions(&[]);
+        assert_eq!(none["parse"].as_array().unwrap().len(), 0);
+        assert_eq!(none["users"].as_array().unwrap().len(), 0);
+        let some = allowed_mentions(&["123".to_string()]);
+        assert_eq!(some["users"][0], "123");
+        assert_eq!(some["parse"].as_array().unwrap().len(), 0);
     }
 }
 

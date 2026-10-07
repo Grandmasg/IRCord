@@ -33,8 +33,12 @@ notify = "6.1"
 lru = "0.12"
 rand = "0.8"
 url = "2"
+tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+webpki-roots = "1"
 lingua = { version = "1.8", default-features = false, features = ["dutch", "english", "german", "french", "spanish", "italian", "portuguese"] }
 
 [dev-dependencies]
 tokio-test = "0.4"
 wiremock = "0.6"
+rcgen = { version = "0.13", default-features = false, features = ["ring", "pem"] }
