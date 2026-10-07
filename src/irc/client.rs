@@ -4,7 +4,6 @@ use crate::config::Config;
 use crate::utils::sanitizer::sanitize_for_irc;
 use std::sync::Arc;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-use tokio::net::TcpStream;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
@@ -117,8 +116,11 @@ impl IrcClient {
     }
 
     async fn connect_and_loop(&mut self, server: &str, port: u16, nick: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        let addr = format!("{}:{}", server, port);
-        let stream = TcpStream::connect(&addr).await?;
+        let tls = super::tls::TlsSettings::from_env(port);
+        let stream = super::tls::connect(server, port, tls).await?;
+        if tls.enabled && !tls.verify {
+            warn!("IRC_TLS_VERIFY=false: de verbinding is versleuteld maar het servercertificaat wordt niet gecontroleerd.");
+        }
         let (reader, mut writer) = tokio::io::split(stream);
         let mut buf_reader = BufReader::new(reader);
 
@@ -126,6 +128,9 @@ impl IrcClient {
         let sasl_pass = std::env::var("IRC_SASL_PASS").ok().filter(|s| !s.trim().is_empty());
         let sasl_user = std::env::var("IRC_SASL_USER").unwrap_or_else(|_| nick.to_string());
         let has_sasl = sasl_pass.is_some();
+        if has_sasl && !tls.enabled {
+            warn!("IRC_SASL_PASS is ingesteld zonder TLS: het wachtwoord gaat in leesbare tekst over de lijn. Zet IRC_USE_TLS=true (poort 6697).");
+        }
 
         if has_sasl {
             info!("IRC verbinding gestart met IRCv3 CAP & SASL PLAIN handshake...");
@@ -270,6 +275,16 @@ impl IrcClient {
                             if let (Some(ev), Some(tx)) = (event, self.presence_tx.as_ref()) {
                                 let _ = tx.try_send(ev);
                             }
+                        }
+                    }
+
+                    // Kanaalonderwerp gewijzigd (alleen het TOPIC-commando; het 332-antwoord bij joinen negeren we bewust)
+                    if parts.len() > 2 && parts[1] == "TOPIC" {
+                        if let (Some(tx), Some(text)) = (self.presence_tx.as_ref(), raw.splitn(4, ' ').nth(3)) {
+                            let _ = tx.try_send(PresenceEvent::Topic {
+                                channel: parts[2].to_string(),
+                                topic: text.strip_prefix(':').unwrap_or(text).to_string(),
+                            });
                         }
                     }
 
@@ -527,6 +542,12 @@ mod tests {
         let quit = tokio::time::timeout(std::time::Duration::from_secs(5), presence_rx.recv()).await.unwrap().unwrap();
         assert!(matches!(quit, PresenceEvent::Quit { ref channel, ref reason, .. }
             if channel.as_deref() == Some("#test") && reason.as_deref() == Some("Ping timeout")), "{:?}", quit);
+
+        // 5b. Onderwerpwijziging komt volledig (met spaties) door als Topic-event
+        w.write_all(b":henk!u@h TOPIC #test :nieuw onderwerp met spaties
+").await.unwrap();
+        let topic = tokio::time::timeout(std::time::Duration::from_secs(5), presence_rx.recv()).await.unwrap().unwrap();
+        assert!(matches!(topic, PresenceEvent::Topic { ref channel, ref topic } if channel == "#test" && topic == "nieuw onderwerp met spaties"), "{:?}", topic);
 
         // 6. Uitgaand bericht van de bot wordt als PRIVMSG verstuurd
         out_tx

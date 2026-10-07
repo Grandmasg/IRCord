@@ -36,6 +36,8 @@ pub mod vakantie;
 pub mod toggles;
 pub mod plugin_admin;
 pub mod media;
+pub mod backup;
+pub mod calc;
 pub mod stats;
 pub mod track;
 pub mod help;

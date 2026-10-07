@@ -56,6 +56,13 @@ pub struct GeneralConfig {
     /// Bind-adres van de HTTP server (standaard 0.0.0.0; gebruik 127.0.0.1 achter een reverse proxy).
     #[serde(default = "default_http_bind")]
     pub http_bind: String,
+    /// Dagelijkse SQLite-back-up (VACUUM INTO) naar `backup_dir`; de oudste worden na `backup_keep` stuks verwijderd.
+    #[serde(default = "default_true")]
+    pub backup_enabled: bool,
+    #[serde(default = "default_backup_keep")]
+    pub backup_keep: usize,
+    #[serde(default = "default_backup_dir")]
+    pub backup_dir: String,
     #[serde(default = "default_http_port")]
     pub http_port: u16,
     #[serde(default = "default_pastebin_threshold")]
@@ -164,6 +171,14 @@ fn default_admin_channel_discord() -> u64 {
     0
 }
 
+fn default_backup_keep() -> usize {
+    7
+}
+
+fn default_backup_dir() -> String {
+    "data/backups".to_string()
+}
+
 fn default_http_bind() -> String {
     "0.0.0.0".to_string()
 }
@@ -190,6 +205,12 @@ pub struct BridgeConfig {
     pub sync_presence: bool,
     #[serde(default = "default_true")]
     pub sync_edits: bool,
+    /// Discord-reacties op gebrugde berichten op IRC melden.
+    #[serde(default = "default_true")]
+    pub sync_reactions: bool,
+    /// IRC-topic <-> Discord-kanaalonderwerp (vereist MANAGE_CHANNELS voor de bot; standaard uit).
+    #[serde(default)]
+    pub sync_topic: bool,
 }
 
 fn default_loop_timeout() -> u64 {

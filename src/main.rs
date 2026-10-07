@@ -190,7 +190,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         error_logger: error_logger.clone(),
         locale: locale_manager.clone(),
         open_meteo_quota: open_meteo_quota.clone(),
-        irc_raw_tx: Some(outbound_irc_raw_tx),
+        irc_raw_tx: Some(outbound_irc_raw_tx.clone()),
         plugins_info: plugins_info.clone(),
         toggles: plugin_toggles.clone(),
         discord_post_tx: Some(discord_post_tx),
@@ -238,6 +238,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     plugin_mgr.register(Box::new(VakantiePlugin::new()));
     plugin_mgr.register(Box::new(StatsPlugin));
     plugin_mgr.register(Box::new(crate::plugins::media::MediaPlugin));
+    plugin_mgr.register(Box::new(crate::plugins::calc::CalcPlugin));
+    plugin_mgr.register(Box::new(crate::plugins::backup::BackupPlugin));
     plugin_mgr.register(Box::new(crate::plugins::plugin_admin::PluginAdminPlugin));
     plugin_mgr.register(Box::new(TrackPlugin));
 
@@ -251,6 +253,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     ));
     let webhook_dispatcher = Arc::new(WebhookDispatcher::new());
     let discord_token = std::env::var("DISCORD_BOT_TOKEN").unwrap_or_default();
+    let discord_http: Option<Arc<serenity::http::Http>> = if cfg.bridge.sync_topic && !discord_token.is_empty() {
+        Some(Arc::new(serenity::http::Http::new(&discord_token)))
+    } else {
+        None
+    };
     let avatar_resolver = Arc::new(AvatarResolver::new(
         pool.clone(),
         discord_token.clone(),
@@ -315,6 +322,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     if !discord_token.is_empty() && discord_token != "YOUR_DISCORD_BOT_TOKEN_HERE" {
         info!("Discord client opstarten...");
         let intents = GatewayIntents::GUILD_MESSAGES
+            | GatewayIntents::GUILD_MESSAGE_REACTIONS
             | GatewayIntents::MESSAGE_CONTENT
             | GatewayIntents::GUILDS;
 
@@ -359,6 +367,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let ai_manager_clone = ai_manager.clone();
     let shutdown_loop = shutdown_token.clone();
     let paste_http = http_client.clone();
+    let relay_pool = pool.clone();
 
     tokio::spawn(async move {
         loop {
@@ -435,14 +444,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                                 let content = msg.content.clone();
                                 let avatar_res = avatar_res_clone.clone();
 
+                                let relay_pool = relay_pool.clone();
                                 tokio::spawn(async move {
                                     let avatar_url = avatar_res.resolve_avatar(&author).await;
-                                    if let Err(e) = disp.send_message_with_avatar(&url, &username, &formatted, avatar_url.as_deref()).await {
-                                        warn!("Fout bij versturen naar Discord Webhook: {}", e);
-                                    } else {
-                                        // Bi-directionele cache koppeling registreren
-                                        let fake_id = format!("{}:{}", chan, chrono::Utc::now().timestamp_millis());
-                                        router.record_bridge_link(fake_id, chan, author, content);
+
+                                    // Webhooks kunnen niet echt antwoorden: "Bob: ..." krijgt een citaat van Bobs laatste bericht
+                                    let mut text = formatted;
+                                    if let Some(target) = crate::bridge::mentions::leading_addressee(&content) {
+                                        if let Some(prev) = router.find_recent_by_author(&chan, &target) {
+                                            text = format!("{}{}", crate::bridge::mentions::format_reply_quote(&prev.author, &prev.content), text);
+                                        }
+                                    }
+                                    // Gekoppelde nicks (@nick of "nick:") worden echte Discord-mentions; alleen die ID's mogen pingen
+                                    let (text, mention_ids) = crate::bridge::mentions::resolve_irc_mentions(&relay_pool, &text).await;
+
+                                    match disp.send_relay(&url, &username, &text, avatar_url.as_deref(), &mention_ids).await {
+                                        Err(e) => warn!("Fout bij versturen naar Discord Webhook: {}", e),
+                                        // Echte Discord-bericht-ID koppelen (voor reacties en reply-citaten)
+                                        Ok(Some(id)) => router.record_bridge_link(id, chan, author, content),
+                                        Ok(None) => {}
                                     }
                                 });
                             }
@@ -581,15 +601,60 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         }
     });
 
+    // Topic-sync: gedeeld geheugen van het laatst gesynchroniseerde onderwerp per IRC-kanaal (voorkomt lussen)
+    let topic_guard: Arc<std::sync::Mutex<std::collections::HashMap<String, String>>> = Arc::default();
+
     // 12b. Synchronisatie van bewerkte/verwijderde Discord-berichten naar IRC
     {
         let router = bridge_router.clone();
         let irc_tx = outbound_irc_tx.clone();
+        let irc_raw_tx = outbound_irc_raw_tx.clone();
+        let topic_guard_ev = topic_guard.clone();
         tokio::spawn(async move {
+            let mut window_start = std::time::Instant::now();
+            let mut reactions_in_window = 0u32;
             while let Some(ev) = discord_event_rx.recv().await {
                 let (channel_id, message_id, new_content) = match ev {
                     crate::bridge::DiscordEvent::Edited { channel_id, message_id, new_content } => (channel_id, message_id, Some(new_content)),
                     crate::bridge::DiscordEvent::Deleted { channel_id, message_id } => (channel_id, message_id, None),
+                    crate::bridge::DiscordEvent::Topic { channel_id, topic } => {
+                        let Some(mapping) = router.get_irc_destination(channel_id) else { continue };
+                        let clean = crate::utils::sanitizer::sanitize_for_irc(&topic).chars().take(300).collect::<String>();
+                        {
+                            let mut guard = topic_guard_ev.lock().unwrap_or_else(|e| e.into_inner());
+                            let key = mapping.irc_channel.to_lowercase();
+                            if guard.get(&key).map(|t| t == &clean).unwrap_or(false) {
+                                continue;
+                            }
+                            guard.insert(key, clean.clone());
+                        }
+                        let _ = irc_raw_tx.send(format!("TOPIC {} :{}", mapping.irc_channel, clean)).await;
+                        continue;
+                    }
+                    crate::bridge::DiscordEvent::Reaction { channel_id, message_id, user, emoji } => {
+                        // Reacties op berichten die wij doorgezet hebben (beide richtingen), met een eenvoudige limiet
+                        if window_start.elapsed() > Duration::from_secs(10) {
+                            window_start = std::time::Instant::now();
+                            reactions_in_window = 0;
+                        }
+                        if reactions_in_window >= 10 {
+                            continue;
+                        }
+                        let Some(mapping) = router.get_irc_destination(channel_id) else { continue };
+                        let Some(origin) = router.lookup_irc_by_discord_id(&message_id) else { continue };
+                        reactions_in_window += 1;
+                        let _ = irc_tx.send(BridgeMessage {
+                            source_platform: Platform::Irc,
+                            source_channel: mapping.irc_channel.clone(),
+                            author_name: "IRCord".into(),
+                            author_id: None,
+                            message_id: None,
+                            content: router.format_reaction_for_irc(&user, &emoji, &origin.author),
+                            reply_to: None,
+                            is_action: false,
+                        }).await;
+                        continue;
+                    }
                 };
                 let Some(mapping) = router.get_irc_destination(channel_id) else { continue };
                 // Alleen berichten die wij zelf naar IRC hebben doorgezet
@@ -639,10 +704,38 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let router = bridge_router.clone();
         let dispatcher = webhook_dispatcher.clone();
         let channels = cfg.channels.clone();
+        let topic_http = discord_http.clone();
+        let topic_guard_pr = topic_guard.clone();
         tokio::spawn(async move {
             let mut window_start = std::time::Instant::now();
             let mut sent_in_window = 0u32;
             while let Some(ev) = presence_rx.recv().await {
+                // IRC-topic naar het Discord-kanaalonderwerp (vereist MANAGE_CHANNELS; Discord beperkt dit zelf sterk)
+                if let crate::bridge::PresenceEvent::Topic { channel, topic } = &ev {
+                    if let (Some(http), Some(m)) = (topic_http.as_ref(), channels.iter().find(|m| m.irc_channel.eq_ignore_ascii_case(channel))) {
+                        let clean: String = crate::utils::sanitizer::strip_mirc_codes(topic).chars().take(1000).collect();
+                        let fresh = {
+                            let mut guard = topic_guard_pr.lock().unwrap_or_else(|e| e.into_inner());
+                            let key = m.irc_channel.to_lowercase();
+                            let same = guard.get(&key).map(|t| t == &clean).unwrap_or(false);
+                            if !same {
+                                guard.insert(key, clean.clone());
+                            }
+                            !same
+                        };
+                        if fresh {
+                            let http = http.clone();
+                            let id = m.discord_channel_id;
+                            tokio::spawn(async move {
+                                let edit = serenity::builder::EditChannel::new().topic(clean);
+                                if let Err(e) = serenity::model::id::ChannelId::new(id).edit(&*http, edit).await {
+                                    warn!("Discord-kanaalonderwerp bijwerken mislukt (heeft de bot MANAGE_CHANNELS?): {}", e);
+                                }
+                            });
+                        }
+                    }
+                    continue;
+                }
                 if window_start.elapsed() > Duration::from_secs(10) {
                     window_start = std::time::Instant::now();
                     sent_in_window = 0;
@@ -709,6 +802,30 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             }
         }
     });
+
+    // 13b. Achtergrondtaak: dagelijkse database-back-up
+    if cfg.general.backup_enabled {
+        let pool = pool.clone();
+        let dir = std::path::PathBuf::from(&cfg.general.backup_dir);
+        let keep = cfg.general.backup_keep;
+        let shutdown = shutdown_token.clone();
+        tokio::spawn(async move {
+            // Eerste back-up 5 minuten na het opstarten, daarna elke 24 uur
+            let mut wait = Duration::from_secs(300);
+            loop {
+                tokio::select! {
+                    _ = shutdown.cancelled() => break,
+                    _ = tokio::time::sleep(wait) => {
+                        match crate::plugins::backup::backup_database(&pool, &dir, keep).await {
+                            Ok(p) => info!("💾 Databaseback-up gemaakt: {}", p.display()),
+                            Err(e) => warn!("Databaseback-up mislukt: {}", e),
+                        }
+                        wait = Duration::from_secs(24 * 3600);
+                    }
+                }
+            }
+        });
+    }
 
     // 14. Achtergrondtaak: Geautomatiseerde herinneringen (!remind / !remindme)
     let remind_pool = pool.clone();

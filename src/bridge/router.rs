@@ -130,6 +130,21 @@ impl BridgeRouter {
         format!("\u{270F}\u{FE0F} <{}> (bewerkt): {}", anti_ping_nick(author), clean)
     }
 
+    /// Meest recente gebrugde bericht van een auteur in een IRC-kanaal (voor reply-citaten).
+    pub fn find_recent_by_author(&self, irc_channel: &str, author: &str) -> Option<IrcMessageRef> {
+        let cache = self.discord_to_irc.lock().unwrap_or_else(|e| e.into_inner());
+        cache
+            .iter()
+            .map(|(_, r)| r)
+            .find(|r| r.channel.eq_ignore_ascii_case(irc_channel) && r.author.eq_ignore_ascii_case(author))
+            .cloned()
+    }
+
+    /// Melding voor IRC dat iemand op Discord op een bericht reageerde.
+    pub fn format_reaction_for_irc(&self, user: &str, emoji: &str, author: &str) -> String {
+        format!("\u{2B50} {} reageerde met {} op het bericht van {}", anti_ping_nick(user), emoji, anti_ping_nick(author))
+    }
+
     /// Melding voor IRC dat een Discord-bericht is verwijderd (de inhoud wordt bewust niet herhaald).
     pub fn format_delete_for_irc(&self, author: &str) -> String {
         format!("\u{1F5D1}\u{FE0F} {} heeft een bericht verwijderd", anti_ping_nick(author))
@@ -237,5 +252,17 @@ mod tests {
         assert!(chan.is_none() && text.contains("(Ping timeout)"), "{text}");
         let discord = PresenceEvent::Join { nick: "x".into(), platform: Platform::Discord, channel: "1".into() };
         assert!(router.format_presence_for_discord(&discord).is_none());
+    }
+
+    #[test]
+    fn recent_by_author_and_reaction_format() {
+        let router = BridgeRouter::new(vec![], 100);
+        router.record_bridge_link("1".into(), "#a".into(), "Bob".into(), "eerste".into());
+        router.record_bridge_link("2".into(), "#a".into(), "Bob".into(), "tweede".into());
+        router.record_bridge_link("3".into(), "#b".into(), "Bob".into(), "ander kanaal".into());
+        assert_eq!(router.find_recent_by_author("#A", "bob").unwrap().content, "tweede");
+        assert!(router.find_recent_by_author("#a", "niemand").is_none());
+        let r = router.format_reaction_for_irc("Kim", "\u{1F44D}", "Bob");
+        assert!(r.contains("reageerde met") && r.contains("op het bericht van"), "{r}");
     }
 }

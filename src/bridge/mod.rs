@@ -1,3 +1,4 @@
+pub mod mentions;
 pub mod router;
 
 use serde::{Deserialize, Serialize};
@@ -41,6 +42,11 @@ pub enum PresenceEvent {
         channel: String,
         reason: Option<String>,
     },
+    /// Het onderwerp van een IRC-kanaal is gewijzigd (TOPIC-commando).
+    Topic {
+        channel: String,
+        topic: String,
+    },
     Quit {
         nick: String,
         platform: Platform,
@@ -55,4 +61,6 @@ pub enum PresenceEvent {
 pub enum DiscordEvent {
     Edited { channel_id: u64, message_id: String, new_content: String },
     Deleted { channel_id: u64, message_id: String },
+    Reaction { channel_id: u64, message_id: String, user: String, emoji: String },
+    Topic { channel_id: u64, topic: String },
 }
