@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 /// Commando's die externe diensten of de lokale AI belasten.
 pub const EXPENSIVE_COMMANDS: &[&str] = &[
     "ai", "tldr", "summary", "roast", "rant", "tirade", "whatis", "def", "catchup", "digest", "vibe", "sentiment",
-    "http", "ssl", "dns", "tr", "translate", "vertaal", "yt", "youtube", "g", "google", "search", "img", "upload",
+    "http", "ssl", "dns", "tr", "translate", "vertaal", "yt", "youtube", "g", "google", "search", "img", "upload", "zoek", "chatzoek", "wiezei",
 ];
 
 pub struct UserRateLimiter {

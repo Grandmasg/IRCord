@@ -240,6 +240,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     plugin_mgr.register(Box::new(crate::plugins::media::MediaPlugin));
     plugin_mgr.register(Box::new(crate::plugins::calc::CalcPlugin));
     plugin_mgr.register(Box::new(crate::plugins::backup::BackupPlugin));
+    plugin_mgr.register(Box::new(crate::plugins::chatsearch::ChatSearchPlugin));
     plugin_mgr.register(Box::new(crate::plugins::plugin_admin::PluginAdminPlugin));
     plugin_mgr.register(Box::new(TrackPlugin));
 
