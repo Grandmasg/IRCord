@@ -429,6 +429,16 @@ pub fn test_config(extra_general: &str, extra_moderation: &str) -> Config {
 mod tests {
     use super::*;
 
+    /// Je eigen `config.toml` (staat niet in git) moet met de huidige code laden; overgeslagen als het bestand ontbreekt (CI).
+    #[test]
+    fn test_local_config_loads_if_present() {
+        let path = std::env::var("CONFIG_PATH").unwrap_or_else(|_| "config.toml".to_string());
+        if std::path::Path::new(&path).exists() {
+            let cfg = Config::load_from_file(&path).unwrap_or_else(|e| panic!("{} laadt niet: {}", path, e));
+            assert!(!cfg.channels.is_empty());
+        }
+    }
+
     #[test]
     fn test_load_example_configs() {
         let en_cfg = Config::load_from_file("config.example.toml").expect("config.example.toml should be valid");

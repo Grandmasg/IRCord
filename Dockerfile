@@ -50,7 +50,9 @@ COPY --from=builder /usr/src/ircord/target/release/ircord /app/ircord
 COPY --from=builder /usr/src/ircord/migrations /app/migrations
 COPY --from=builder /usr/src/ircord/locales /app/locales
 COPY --from=builder /usr/src/ircord/scripts /app/scripts
-COPY config.toml /app/config.toml
+# Alleen de voorbeeldconfig als noodstandaard: je echte config komt uit CONFIG_TOML (N5/server) of een gekoppeld
+# bestand. Zo bevat de image nooit sleutels uit je lokale config.toml, en bouwt hij ook vanuit een schone git-kloon.
+COPY config.example.toml /app/config.toml
 COPY .env.example /app/.env.example
 
 # Creëer data directory
