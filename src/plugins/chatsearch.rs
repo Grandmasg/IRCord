@@ -1,4 +1,4 @@
-//! `!zoek <woorden> [van:nick]`: doorzoekt de chatgeschiedenis van dit kanaal (SQLite FTS5).
+//! `!chatzoek <woorden> [van:nick]` (ook `!chatsearch`): doorzoekt de chatgeschiedenis van dit kanaal (SQLite FTS5).
 
 use super::{CommandEvent, Plugin, PluginContext};
 use crate::utils::sanitizer::anti_ping_nick;
@@ -68,15 +68,15 @@ fn snippet(msg: &str) -> String {
 #[async_trait]
 impl Plugin for ChatSearchPlugin {
     fn name(&self) -> &'static str { "chatsearch" }
-    fn triggers(&self) -> &[&'static str] { &["zoek", "chatzoek", "wiezei"] }
+    fn triggers(&self) -> &[&'static str] { &["chatsearch", "chatzoek", "wiezei"] }
     fn help(&self) -> &'static str {
-        "!zoek <woorden> [van:nick] - doorzoekt de chatgeschiedenis van dit kanaal en toont de nieuwste treffers (web zoeken: !g)"
+        "!chatzoek <woorden> [van:nick] (of !chatsearch) - doorzoekt de chatgeschiedenis van dit kanaal en toont de nieuwste treffers (web zoeken: !g of !zoek)"
     }
 
     async fn on_command(&self, ctx: &PluginContext, cmd: &CommandEvent) -> Result<Option<String>, Box<dyn std::error::Error + Send + Sync>> {
         let q = parse_query(&cmd.args);
         if q.terms.is_empty() {
-            return Ok(Some("🔎 Gebruik: !zoek <woorden> [van:nick], bijvoorbeeld !zoek back-up van:henk (zoekt in de chat van dit kanaal; web zoeken doe je met !g)".into()));
+            return Ok(Some("🔎 Gebruik: !chatzoek <woorden> [van:nick], bijvoorbeeld !chatzoek back-up van:henk (zoekt in de chat van dit kanaal; web zoeken doe je met !g)".into()));
         }
         let expr = fts_expression(&q.terms);
         let prefixes: Vec<String> = ctx.config.general.command_prefixes.iter().map(|p| format!("{}%", p.replace('%', ""))).collect();
@@ -162,7 +162,7 @@ mod tests {
         let rows = [
             ("#a", "henk", "de back-up van de nas is mislukt"),
             ("#a", "piet", "back-up draait nu weer"),
-            ("#a", "henk", "!zoek back-up"),
+            ("#a", "henk", "!chatzoek back-up"),
             ("#a", "Monkeybot", "🔎 1 van 2 treffers voor back-up"),
             ("#b", "henk", "back-up in een ander kanaal"),
             ("#a", "henk", "iets heel anders"),

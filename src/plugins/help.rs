@@ -22,7 +22,7 @@ impl Plugin for HelpPlugin {
                 • 👤 \x02Profiel & Stats:\x02 !profiel, !top, !karma, !whatpulse, !birthday, !seen, !afk\n\
                 • 🛡️ \x02Moderatie:\x02 !kick, !ban, !kb, !op, !deop, !voice, !devoice, !topic\n\
                 • ℹ️ \x02Info & Web:\x02 !wiki, !google, !youtube, !crypto, !urban, !mc\n\
-                • ⚙️ \x02Systeem:\x02 !status, !uptime, !peak, !errors, !sysadmin, !tech, !poll, !remind, !tell, !track, !plugin, !img, !upload, !calc, !zoek, !backup, !export\n\
+                • ⚙️ \x02Systeem:\x02 !status, !uptime, !peak, !errors, !sysadmin, !tech, !poll, !remind, !tell, !track, !plugin, !img, !upload, !calc, !chatzoek, !backup, !export\n\
                 \x0314Typ '!help <commando>' voor gedetailleerde syntax (bijv. !help weer of !help roulette).\x03".into()
             ));
         }
