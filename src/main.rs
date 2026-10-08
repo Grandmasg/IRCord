@@ -243,6 +243,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     plugin_mgr.register(Box::new(crate::plugins::chatsearch::ChatSearchPlugin));
     plugin_mgr.register(Box::new(crate::plugins::timer::TimerPlugin));
     plugin_mgr.register(Box::new(crate::plugins::lookup::LookupPlugin));
+    plugin_mgr.register(Box::new(crate::plugins::convert::ConvertPlugin));
+    plugin_mgr.register(Box::new(crate::plugins::pick::PickPlugin));
+    plugin_mgr.register(Box::new(crate::plugins::rain::RainPlugin));
     plugin_mgr.register(Box::new(crate::plugins::plugin_admin::PluginAdminPlugin));
     plugin_mgr.register(Box::new(TrackPlugin));
 

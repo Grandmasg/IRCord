@@ -132,7 +132,7 @@ fn extract_time_hhmm(iso_str: &str) -> &str {
     }
 }
 
-async fn get_user_location(
+pub(crate) async fn get_user_location(
     ctx: &PluginContext,
     platform: &str,
     author: &str,

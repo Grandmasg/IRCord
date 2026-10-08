@@ -17,7 +17,7 @@ impl Plugin for HelpPlugin {
             return Ok(Some(
                 "📖 \x02[IRCord Help]\x02 Beschikbare categorieën & commando's:\n\
                 • 🧠 \x02AI & Taal:\x02 !ai, !rephrase, !tr, !lang\n\
-                • 🌦️ \x02Weer & Tijd:\x02 !weer, !tijd, !countdown, !kerst, !weekend\n\
+                • 🌦️ \x02Weer & Tijd:\x02 !weer, !regen, !tijd, !countdown, !kerst, !weekend, !convert, !timer, !pick\n\
                 • 🎮 \x02Spel & Fun:\x02 !roulette, !8ball, !roll, !flip, !choose, !slap\n\
                 • 👤 \x02Profiel & Stats:\x02 !profiel, !top, !karma, !whatpulse, !birthday, !seen, !afk\n\
                 • 🛡️ \x02Moderatie:\x02 !kick, !ban, !kb, !op, !deop, !voice, !devoice, !topic\n\
