@@ -5,14 +5,12 @@ use std::sync::OnceLock;
 
 static KARMA_REGEX: OnceLock<Regex> = OnceLock::new();
 
-/// Zoekt een losstaand `nick++` / `nick--`. De nick moet met een letter of cijfer beginnen en
-/// het token moet door witruimte of leestekens begrensd zijn, zodat balkjes zoals `[||||||--`
-/// of `a--b` niet meetellen.
+/// Karma telt alleen als het HELE bericht één `nick++` of `nick--` is, zoals bij de meeste IRC-bots:
+/// "koffie++" telt, "ik wil koffie++" of "goed gedaan PjoT++" niet. De nick moet met een letter of cijfer
+/// beginnen, zodat balkjes zoals `[||||||--` of `a--b` ook niet meetellen.
 fn parse_karma(content: &str) -> Option<(&str, &str)> {
-    let re = KARMA_REGEX.get_or_init(|| {
-        Regex::new(r"(?:^|\s)([\p{L}\p{N}_][\p{L}\p{N}_\-\[\]\\`^{}|]{0,31})(\+\+|--)(?:$|[\s.,!?:;)])").unwrap()
-    });
-    let caps = re.captures(content)?;
+    let re = KARMA_REGEX.get_or_init(|| Regex::new(r"^([\p{L}\p{N}_][\p{L}\p{N}_\-\[\]\\`^{}|]{0,31})(\+\+|--)$").unwrap());
+    let caps = re.captures(content.trim())?;
     Some((caps.get(1)?.as_str(), caps.get(2)?.as_str()))
 }
 
@@ -99,11 +97,21 @@ mod tests {
     use super::parse_karma;
 
     #[test]
-    fn parses_clean_karma_tokens() {
+    fn parses_only_a_lone_karma_token() {
         assert_eq!(parse_karma("koffie++"), Some(("koffie", "++")));
-        assert_eq!(parse_karma("goed gedaan PjoT++ !"), Some(("PjoT", "++")));
-        assert_eq!(parse_karma("henk-- haha"), Some(("henk", "--")));
+        assert_eq!(parse_karma("  koffie++  "), Some(("koffie", "++")));
+        assert_eq!(parse_karma("henk--"), Some(("henk", "--")));
         assert_eq!(parse_karma("c++"), Some(("c", "++")));
+        assert_eq!(parse_karma("Pj[o]T++"), Some(("Pj[o]T", "++")));
+    }
+
+    #[test]
+    fn sentences_with_a_karma_token_do_not_count() {
+        assert_eq!(parse_karma("ik wil koffie++"), None);
+        assert_eq!(parse_karma("goed gedaan PjoT++ !"), None);
+        assert_eq!(parse_karma("henk-- haha"), None);
+        assert_eq!(parse_karma("koffie++ thee++"), None);
+        assert_eq!(parse_karma("koffie++."), None);
     }
 
     #[test]
