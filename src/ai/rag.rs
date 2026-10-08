@@ -86,7 +86,8 @@ impl RagSearcher {
         }
     }
 
-    /// Zoekt recente chatberichten via SQLite FTS5 die matchen met een zoekterm
+    /// Zoekt chatberichten via SQLite FTS5 die matchen met een zoekterm (op relevantie; nog niet aan een commando gekoppeld)
+    #[allow(dead_code)]
     pub async fn search_history(&self, query: &str, limit: i64) -> Result<Vec<String>, sqlx::Error> {
         let sanitized = query.replace(['"', '*'], "");
         let fts_query = format!("\"{}\"", sanitized);
@@ -115,6 +116,30 @@ impl RagSearcher {
         Ok(results)
     }
 
+    /// De `limit` nieuwste berichten van een kanaal, in chronologische volgorde (oudste eerst).
+    /// (`search_history` sorteert op relevantie en is bedoeld voor zoektermen, niet voor "wat is er net gezegd".)
+    pub async fn recent_messages(&self, channel: &str, limit: i64) -> Result<Vec<String>, sqlx::Error> {
+        let rows: Vec<(String, String, String)> = sqlx::query_as(
+            r#"
+            SELECT author, message, timestamp
+            FROM chat_history
+            WHERE channel = ?
+            ORDER BY rowid DESC
+            LIMIT ?
+            "#,
+        )
+        .bind(channel)
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(rows
+            .into_iter()
+            .rev()
+            .map(|(author, message, timestamp)| format!("[{}] {}: {}", timestamp, author, message))
+            .collect())
+    }
+
     /// Stuurt een nieuw chatbericht direct door naar de asynchrone batching-queue
     pub async fn log_message(&self, channel: &str, author: &str, platform: &str, message: &str) -> Result<(), sqlx::Error> {
         let now = chrono::Utc::now().to_rfc3339();
@@ -128,5 +153,33 @@ impl RagSearcher {
 
         let _ = self.batch_tx.send(entry).await;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sqlx::sqlite::SqlitePoolOptions;
+
+    #[tokio::test]
+    async fn recent_messages_returns_the_newest_in_chronological_order() {
+        let pool = SqlitePoolOptions::new().max_connections(1).connect("sqlite::memory:").await.unwrap();
+        sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+        for i in 1..=30 {
+            for chan in ["#c", "#andere"] {
+                sqlx::query("INSERT INTO chat_history (channel, author, platform, message, timestamp) VALUES (?, 'a', 'irc', ?, ?)")
+                    .bind(chan)
+                    .bind(format!("bericht {i}"))
+                    .bind(format!("2026-10-08T10:{:02}:00Z", i))
+                    .execute(&pool)
+                    .await
+                    .unwrap();
+            }
+        }
+        let rag = RagSearcher::new(pool);
+        let got = rag.recent_messages("#c", 3).await.unwrap();
+        assert_eq!(got.len(), 3);
+        assert!(got[0].ends_with("bericht 28") && got[2].ends_with("bericht 30"), "{got:?}");
+        assert!(rag.recent_messages("#leeg", 3).await.unwrap().is_empty());
     }
 }

@@ -182,7 +182,7 @@ impl Plugin for AiPlugin {
                 }
 
                 // B. Channel history RAG summary
-                let recent_logs = ctx.rag.search_history(&cmd.channel, 20).await?;
+                let recent_logs = ctx.rag.recent_messages(&cmd.channel, 20).await?;
                 if recent_logs.is_empty() {
                     return Ok(Some(ctx.locale.t("ai_no_history").to_string()));
                 }
@@ -215,7 +215,7 @@ impl Plugin for AiPlugin {
             }
 
             "topic" => {
-                let recent_logs = ctx.rag.search_history(&cmd.channel, 15).await?;
+                let recent_logs = ctx.rag.recent_messages(&cmd.channel, 15).await?;
                 let context_text = recent_logs.join("\n");
                 let prompt = match ctx.locale.language() {
                     "nl" => format!(
@@ -316,7 +316,7 @@ impl Plugin for AiPlugin {
                         ),
                     }
                 } else {
-                    let recent_logs = ctx.rag.search_history(&cmd.channel, 8).await.unwrap_or_default();
+                    let recent_logs = ctx.rag.recent_messages(&cmd.channel, 8).await.unwrap_or_default();
                     let context_text = recent_logs.join("\n");
                     if !context_text.trim().is_empty() {
                         match ctx.locale.language() {
@@ -384,7 +384,7 @@ impl Plugin for AiPlugin {
                     35
                 };
 
-                let recent_logs = ctx.rag.search_history(&cmd.channel, count).await?;
+                let recent_logs = ctx.rag.recent_messages(&cmd.channel, count).await?;
                 if recent_logs.is_empty() {
                     return Ok(Some(format!("ℹ️ {}", ctx.locale.t("ai_no_history"))));
                 }
@@ -423,7 +423,7 @@ impl Plugin for AiPlugin {
                     return Ok(Some(format!("⚠️ {}", ctx.locale.t("ai_budget_exceeded"))));
                 }
 
-                let recent_logs = ctx.rag.search_history(&cmd.channel, 30).await?;
+                let recent_logs = ctx.rag.recent_messages(&cmd.channel, 30).await?;
                 if recent_logs.is_empty() {
                     return Ok(Some(format!("ℹ️ {}", ctx.locale.t("ai_no_history"))));
                 }
