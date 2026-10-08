@@ -439,6 +439,15 @@ mod tests {
         }
     }
 
+    /// Een inline CONFIG_TOML (Compose/YAML `|-`, of `$(cat bestand)`) heeft vaak geen eindregel; een commentaar op de laatste regel moet dan ook laden.
+    #[test]
+    fn test_config_without_trailing_newline_loads() {
+        let text = std::fs::read_to_string("config.example.toml").unwrap();
+        let trimmed = text.trim_end_matches(['\r', '\n']);
+        assert!(trimmed.rsplit('\n').next().unwrap().contains('#'), "test gaat uit van een commentaar op de laatste regel");
+        Config::load_from_str(trimmed).expect("config zonder eindregel moet laden");
+    }
+
     #[test]
     fn test_load_example_configs() {
         let en_cfg = Config::load_from_file("config.example.toml").expect("config.example.toml should be valid");
