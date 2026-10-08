@@ -38,6 +38,8 @@ pub mod plugin_admin;
 pub mod media;
 pub mod backup;
 pub mod chatsearch;
+pub mod timer;
+pub mod lookup;
 pub mod calc;
 pub mod stats;
 pub mod track;

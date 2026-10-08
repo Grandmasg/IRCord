@@ -13,9 +13,9 @@ impl RemindPlugin {
         locale: &LocaleManager,
     ) -> Result<Vec<(String, String, String, String)>, Box<dyn std::error::Error + Send + Sync>> {
         let now = Utc::now().timestamp();
-        let rows: Vec<(i64, String, String, String, String)> = sqlx::query_as(
+        let rows: Vec<(i64, String, String, String, String, String)> = sqlx::query_as(
             r#"
-            SELECT id, author, channel, platform, message
+            SELECT id, author, channel, platform, message, kind
             FROM reminders
             WHERE trigger_at <= ? AND delivered_at IS NULL
             ORDER BY id ASC
@@ -28,16 +28,21 @@ impl RemindPlugin {
 
         let mut triggers = Vec::new();
 
-        for (id, author, channel, platform, message) in rows {
+        for (id, author, channel, platform, message, kind) in rows {
             let _ = sqlx::query("UPDATE reminders SET delivered_at = CURRENT_TIMESTAMP WHERE id = ?")
                 .bind(id)
                 .execute(pool)
                 .await;
 
-            let formatted = locale.tf(
-                "remind_triggered",
-                &[("author", &author), ("message", &message)],
-            );
+            let formatted = if kind == "timer" {
+                if locale.is_dutch() {
+                    format!("⏱️ Timer afgelopen voor \x02{}\x02: {}", author, message)
+                } else {
+                    format!("⏱️ Timer finished for \x02{}\x02: {}", author, message)
+                }
+            } else {
+                locale.tf("remind_triggered", &[("author", &author), ("message", &message)])
+            };
             triggers.push((channel, platform, author, formatted));
         }
 
@@ -61,22 +66,11 @@ impl Plugin for RemindPlugin {
             return Ok(Some(ctx.locale.t("remind_usage").into()));
         }
 
-        let unit = time_str.chars().last().unwrap_or('m');
-        let num_str = &time_str[..time_str.len().saturating_sub(1)];
-        let count: i64 = match num_str.parse() {
-            Ok(n) if n > 0 => n,
-            _ => return Ok(Some(ctx.locale.t("remind_invalid_time").into())),
+        // Elke duur: 30m, 2h, 1h30m, 45s, 1d (een kaal getal telt als minuten)
+        let Some(secs) = crate::utils::duration::parse_duration(time_str, 60).filter(|s| *s >= 10) else {
+            return Ok(Some(ctx.locale.t("remind_invalid_time").into()));
         };
-
-        let duration = match unit {
-            'm' | 'M' => ChronoDuration::minutes(count),
-            'h' | 'H' => ChronoDuration::hours(count),
-            'd' | 'D' => ChronoDuration::days(count),
-            _ => ChronoDuration::minutes(count),
-        };
-
-        let trigger_at = Utc::now() + duration;
-        let trigger_at_epoch = trigger_at.timestamp();
+        let trigger_at_epoch = (Utc::now() + ChronoDuration::seconds(secs)).timestamp();
 
         sqlx::query(
             r#"
@@ -92,12 +86,13 @@ impl Plugin for RemindPlugin {
         .execute(&ctx.db)
         .await?;
 
-        let unit_str = if unit == 'h' {
-            ctx.locale.t("remind_unit_hour")
-        } else if unit == 'd' {
-            ctx.locale.t("remind_unit_day")
+        // Bevestiging in de grootste eenheid waarin de duur (afgerond naar boven) netjes past
+        let (count, unit_str) = if secs % 86_400 == 0 {
+            (secs / 86_400, ctx.locale.t("remind_unit_day"))
+        } else if secs % 3600 == 0 {
+            (secs / 3600, ctx.locale.t("remind_unit_hour"))
         } else {
-            ctx.locale.t("remind_unit_minute")
+            ((secs + 59) / 60, ctx.locale.t("remind_unit_minute"))
         };
         let count_str = count.to_string();
         let confirmation = ctx.locale.tf(
@@ -111,5 +106,29 @@ impl Plugin for RemindPlugin {
         );
 
         Ok(Some(format!("⏰ {}", confirmation)))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sqlx::sqlite::SqlitePoolOptions;
+
+    #[tokio::test]
+    async fn timers_are_delivered_with_their_own_text() {
+        let pool = SqlitePoolOptions::new().max_connections(1).connect("sqlite::memory:").await.unwrap();
+        sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+        let past = Utc::now().timestamp() - 5;
+        for (msg, kind) in [("pizza", "remind"), ("koffie", "timer")] {
+            sqlx::query("INSERT INTO reminders (author, channel, platform, message, trigger_at, kind) VALUES ('henk', '#a', 'irc', ?, ?, ?)")
+                .bind(msg).bind(past).bind(kind).execute(&pool).await.unwrap();
+        }
+        let locale = LocaleManager::load("locales", "nl");
+        let out = RemindPlugin::check_and_trigger_reminders(&pool, &locale).await.unwrap();
+        assert_eq!(out.len(), 2);
+        assert!(out[0].3.contains("pizza") && !out[0].3.contains("Timer"), "{:?}", out[0]);
+        assert!(out[1].3.contains("Timer afgelopen") && out[1].3.contains("koffie"), "{:?}", out[1]);
+        // niet twee keer afleveren
+        assert!(RemindPlugin::check_and_trigger_reminders(&pool, &locale).await.unwrap().is_empty());
     }
 }
