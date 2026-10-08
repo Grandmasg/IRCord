@@ -1,0 +1,2 @@
+# Migraties bepalen een controlesom (sqlx); regeleinden moeten overal gelijk zijn (Windows, WSL, CI).
+*.sql text eol=lf

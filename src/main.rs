@@ -115,9 +115,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         .await?;
 
     info!("Uitvoeren van database migraties (schema + FTS5)...");
-    sqlx::migrate!("./migrations")
-        .run(&pool)
-        .await?;
+    let migrator = sqlx::migrate!("./migrations");
+    // Controlesommen die alleen door regeleinden (CRLF/LF) afwijken herstellen; andere afwijkingen alleen met opt-in
+    let accept_checksums = std::env::var("IRCORD_ACCEPT_MIGRATION_CHECKSUMS")
+        .map(|v| matches!(v.trim().to_lowercase().as_str(), "1" | "true" | "yes" | "ja"))
+        .unwrap_or(false);
+    crate::utils::migrations::reconcile_checksums(&pool, &migrator, accept_checksums).await;
+    migrator.run(&pool).await?;
     info!("Database migraties succesvol toegepast!");
 
     // 5. Initialiseer HTTP client & AI componenten (FlashML FreeToken, RAG, VLM)
